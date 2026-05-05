@@ -1,0 +1,232 @@
+{
+  "app": {
+    "name": "Najd Workshop",
+    "description": "Workshop management dashboard",
+    "shortName": "NW",
+    "location": "Saudi Arabia"
+  },
+  "language": {
+    "label": "Language",
+    "english": "English",
+    "arabic": "Arabic"
+  },
+  "common": {
+    "active": "Active",
+    "viewEdit": "View/Edit",
+    "archive": "Archive",
+    "restore": "Restore",
+    "archived": "Archived",
+    "showArchived": "Show archived",
+    "notAvailable": "N/A"
+  },
+  "toast": {
+    "recordArchived": "Record archived",
+    "recordRestored": "Record restored"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "customers": "Customers",
+    "vehicles": "Vehicles",
+    "jobCards": "Job Cards",
+    "inventory": "Inventory",
+    "purchases": "Purchases",
+    "expenses": "Expenses",
+    "invoices": "Invoices",
+    "reports": "Reports",
+    "settings": "Settings"
+  },
+  "topbar": {
+    "title": "Dashboard",
+    "subtitle": "Today at the workshop",
+    "searchPlaceholder": "Search jobs, customers, vehicles",
+    "branch": "Riyadh Branch"
+  },
+  "dashboard": {
+    "welcomeTitle": "Workshop overview",
+    "welcomeBody": "A quick bilingual snapshot for daily operations.",
+    "quickAction": "New Job Card"
+  },
+  "cards": {
+    "activeJobs": "Active Jobs",
+    "todaysRevenue": "Today\u2019s Revenue",
+    "pendingPayments": "Pending Payments",
+    "lowStockItems": "Low Stock Items",
+    "monthlyExpenses": "Monthly Expenses",
+    "completedJobs": "Completed Jobs"
+  },
+  "customers": {
+    "title": "Customers",
+    "subtitle": "Manage workshop customers and contact records",
+    "addButton": "Add Customer",
+    "searchLabel": "Search customers",
+    "searchPlaceholder": "Search by name, phone, or city",
+    "recordCount": "{count} customer records",
+    "activeRecordCount": "{count} active customer records",
+    "archivedRecordCount": "{count} archived customer records",
+    "typeNew": "New",
+    "typeRepeat": "Repeat",
+    "emptyTitle": "No customers found",
+    "emptyBody": "Try another name, phone number, or city to find the customer record.",
+    "emptyActiveTitle": "No active records found",
+    "emptyActiveBody": "Add a customer or restore an archived record to show it in the active list.",
+    "emptyArchivedTitle": "No archived records found",
+    "emptyArchivedBody": "Archived customer records will appear here after you archive them.",
+    "fields": {
+      "name": "Customer name",
+      "phone": "Phone number",
+      "city": "City",
+      "customerType": "Customer type",
+      "totalVehicles": "Total vehicles",
+      "totalVisits": "Total visits",
+      "outstandingBalance": "Outstanding balance",
+      "lastVisit": "Last visit date",
+      "notes": "Notes"
+    },
+    "form": {
+      "title": "Add Customer",
+      "subtitle": "Create a local customer record for testing.",
+      "editTitle": "View/Edit Customer",
+      "editSubtitle": "Review and update the local customer record.",
+      "close": "Close",
+      "namePlaceholder": "Enter customer name",
+      "phonePlaceholder": "Enter phone number",
+      "cityPlaceholder": "Enter city",
+      "totalVehiclesPlaceholder": "Enter total vehicles",
+      "totalVisitsPlaceholder": "Enter total visits",
+      "balancePlaceholder": "Enter outstanding balance",
+      "lastVisitPlaceholder": "Select last visit date",
+      "notesPlaceholder": "Add optional notes",
+      "save": "Save",
+      "cancel": "Cancel"
+    }
+  },
+  "vehicles": {
+    "title": "Vehicles",
+    "subtitle": "Track customer vehicles and maintenance history",
+    "addButton": "Add Vehicle",
+    "startJob": "Start Job",
+    "viewServiceHistory": "View Service History",
+    "searchLabel": "Search vehicles",
+    "searchPlaceholder": "Search by owner, plate number, make, or model",
+    "recordCount": "{count} vehicle records",
+    "activeRecordCount": "{count} active vehicle records",
+    "archivedRecordCount": "{count} archived vehicle records",
+    "emptyTitle": "No vehicles found",
+    "emptyBody": "Try another owner name, plate number, make, or model to find a vehicle record.",
+    "emptyActiveTitle": "No active records found",
+    "emptyActiveBody": "Add a vehicle or restore an archived record to show it in the active list.",
+    "emptyArchivedTitle": "No archived records found",
+    "emptyArchivedBody": "Archived vehicle records will appear here after you archive them.",
+    "fields": {
+      "ownerName": "Owner/customer name",
+      "plateNumber": "Plate number",
+      "make": "Make/brand",
+      "model": "Model",
+      "year": "Year",
+      "color": "Color",
+      "vehicleType": "Vehicle type",
+      "totalVisits": "Total visits",
+      "lastServiceDate": "Last service date",
+      "currentStatus": "Current status",
+      "lastWorkPerformed": "Last work performed",
+      "notes": "Notes"
+    },
+    "status": {
+      "active": "Active",
+      "inWorkshop": "In Workshop",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "maintenance": {
+      "title": "Service History Summary"
+    },
+    "history": {
+      "title": "Service History",
+      "close": "Close",
+      "emptyTitle": "No service history found",
+      "emptyBody": "Job cards linked to this vehicle will appear here."
+    },
+    "colors": {
+      "white": "White",
+      "silver": "Silver",
+      "black": "Black",
+      "blue": "Blue",
+      "gray": "Gray"
+    },
+    "types": {
+      "sedan": "Sedan",
+      "suv": "SUV",
+      "pickup": "Pickup",
+      "van": "Van"
+    },
+    "form": {
+      "title": "Add Vehicle",
+      "subtitle": "Create a local vehicle record for testing.",
+      "editTitle": "View/Edit Vehicle",
+      "editSubtitle": "Review and update the local vehicle record.",
+      "close": "Close",
+      "ownerPlaceholder": "Enter owner/customer name",
+      "platePlaceholder": "Enter plate number",
+      "makePlaceholder": "Enter make or brand",
+      "modelPlaceholder": "Enter model",
+      "yearPlaceholder": "Enter year",
+      "colorPlaceholder": "Enter color",
+      "typePlaceholder": "Enter vehicle type",
+      "totalVisitsPlaceholder": "Enter total visits",
+      "lastServicePlaceholder": "Select last service date",
+      "notesPlaceholder": "Add optional notes",
+      "save": "Save",
+      "cancel": "Cancel"
+    }
+  },
+  "jobCards": {
+    "title": "Job Cards",
+    "subtitle": "Track workshop jobs and service history",
+    "addButton": "Add Job Card",
+    "recordCount": "{count} job cards",
+    "searchLabel": "Search job cards",
+    "searchPlaceholder": "Search by job number, customer, vehicle, plate, or mechanic",
+    "cancelArchive": "Cancel/Archive",
+    "emptyTitle": "No job cards found",
+    "emptyBody": "Create a job card to start building service history.",
+    "fields": {
+      "jobNumber": "Job number",
+      "vehicle": "Vehicle",
+      "date": "Job date",
+      "status": "Status",
+      "amount": "Amount",
+      "complaint": "Problem/complaint",
+      "workPerformed": "Work performed",
+      "mechanic": "Assigned mechanic",
+      "laborCost": "Labor cost",
+      "partsCost": "Parts cost",
+      "totalAmount": "Total amount",
+      "paymentStatus": "Payment status",
+      "notes": "Notes"
+    },
+    "paymentStatus": {
+      "unpaid": "Unpaid",
+      "partial": "Partial",
+      "paid": "Paid"
+    },
+    "form": {
+      "title": "Add Job Card",
+      "subtitle": "Assign a job to a vehicle and update service history.",
+      "editTitle": "View/Edit Job Card",
+      "editSubtitle": "Review and update the workshop job record.",
+      "close": "Close",
+      "jobNumberPlaceholder": "Enter job number",
+      "vehiclePlaceholder": "Select vehicle",
+      "datePlaceholder": "Select job date",
+      "amountPlaceholder": "Enter amount",
+      "complaintPlaceholder": "Describe the customer complaint",
+      "workPlaceholder": "Describe work performed",
+      "mechanicPlaceholder": "Enter mechanic name",
+      "laborCostPlaceholder": "Enter labor cost",
+      "partsCostPlaceholder": "Enter parts cost",
+      "notesPlaceholder": "Add optional notes",
+      "save": "Save",
+      "cancel": "Cancel"
+    }
+  }
+}

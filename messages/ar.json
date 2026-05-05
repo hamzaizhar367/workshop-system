@@ -1,0 +1,232 @@
+{
+  "app": {
+    "name": "ورشة نجد",
+    "description": "لوحة إدارة الورشة",
+    "shortName": "ون",
+    "location": "المملكة العربية السعودية"
+  },
+  "language": {
+    "label": "اللغة",
+    "english": "English",
+    "arabic": "العربية"
+  },
+  "common": {
+    "active": "نشط",
+    "viewEdit": "عرض/تعديل",
+    "archive": "أرشفة",
+    "restore": "استعادة",
+    "archived": "مؤرشف",
+    "showArchived": "إظهار المؤرشف",
+    "notAvailable": "غير متوفر"
+  },
+  "toast": {
+    "recordArchived": "تمت أرشفة السجل",
+    "recordRestored": "تمت استعادة السجل"
+  },
+  "nav": {
+    "dashboard": "لوحة التحكم",
+    "customers": "العملاء",
+    "vehicles": "المركبات",
+    "jobCards": "أوامر العمل",
+    "inventory": "المخزون",
+    "purchases": "المشتريات",
+    "expenses": "المصروفات",
+    "invoices": "الفواتير",
+    "reports": "التقارير",
+    "settings": "الإعدادات"
+  },
+  "topbar": {
+    "title": "لوحة التحكم",
+    "subtitle": "اليوم في الورشة",
+    "searchPlaceholder": "ابحث عن أوامر العمل أو العملاء أو المركبات",
+    "branch": "فرع الرياض"
+  },
+  "dashboard": {
+    "welcomeTitle": "نظرة عامة على الورشة",
+    "welcomeBody": "ملخص ثنائي اللغة سريع للعمليات اليومية.",
+    "quickAction": "أمر عمل جديد"
+  },
+  "cards": {
+    "activeJobs": "الأعمال النشطة",
+    "todaysRevenue": "إيرادات اليوم",
+    "pendingPayments": "المدفوعات المعلقة",
+    "lowStockItems": "أصناف منخفضة المخزون",
+    "monthlyExpenses": "مصروفات الشهر",
+    "completedJobs": "الأعمال المكتملة"
+  },
+  "customers": {
+    "title": "العملاء",
+    "subtitle": "إدارة عملاء الورشة وسجلات التواصل",
+    "addButton": "إضافة عميل",
+    "searchLabel": "البحث في العملاء",
+    "searchPlaceholder": "ابحث بالاسم أو الجوال أو المدينة",
+    "recordCount": "{count} سجل عميل",
+    "activeRecordCount": "{count} سجل عميل نشط",
+    "archivedRecordCount": "{count} سجل عميل مؤرشف",
+    "typeNew": "جديد",
+    "typeRepeat": "متكرر",
+    "emptyTitle": "لا توجد نتائج",
+    "emptyBody": "جرّب اسمًا أو رقم جوال أو مدينة أخرى للعثور على سجل العميل.",
+    "emptyActiveTitle": "لا توجد سجلات نشطة",
+    "emptyActiveBody": "أضف عميلًا أو استعد سجلًا مؤرشفًا ليظهر في القائمة النشطة.",
+    "emptyArchivedTitle": "لا توجد سجلات مؤرشفة",
+    "emptyArchivedBody": "ستظهر سجلات العملاء المؤرشفة هنا بعد أرشفتها.",
+    "fields": {
+      "name": "اسم العميل",
+      "phone": "رقم الجوال",
+      "city": "المدينة",
+      "customerType": "نوع العميل",
+      "totalVehicles": "إجمالي المركبات",
+      "totalVisits": "إجمالي الزيارات",
+      "outstandingBalance": "الرصيد المستحق",
+      "lastVisit": "تاريخ آخر زيارة",
+      "notes": "ملاحظات"
+    },
+    "form": {
+      "title": "إضافة عميل",
+      "subtitle": "إنشاء سجل عميل محلي للتجربة.",
+      "editTitle": "عرض/تعديل العميل",
+      "editSubtitle": "مراجعة وتحديث سجل العميل المحلي.",
+      "close": "إغلاق",
+      "namePlaceholder": "أدخل اسم العميل",
+      "phonePlaceholder": "أدخل رقم الجوال",
+      "cityPlaceholder": "أدخل المدينة",
+      "totalVehiclesPlaceholder": "أدخل إجمالي المركبات",
+      "totalVisitsPlaceholder": "أدخل إجمالي الزيارات",
+      "balancePlaceholder": "أدخل الرصيد المستحق",
+      "lastVisitPlaceholder": "اختر تاريخ آخر زيارة",
+      "notesPlaceholder": "أضف ملاحظات اختيارية",
+      "save": "حفظ",
+      "cancel": "إلغاء"
+    }
+  },
+  "vehicles": {
+    "title": "المركبات",
+    "subtitle": "متابعة مركبات العملاء وسجل الصيانة",
+    "addButton": "إضافة مركبة",
+    "startJob": "بدء أمر عمل",
+    "viewServiceHistory": "عرض سجل الصيانة",
+    "searchLabel": "البحث في المركبات",
+    "searchPlaceholder": "ابحث باسم المالك أو رقم اللوحة أو الشركة أو الموديل",
+    "recordCount": "{count} سجل مركبة",
+    "activeRecordCount": "{count} سجل مركبة نشط",
+    "archivedRecordCount": "{count} سجل مركبة مؤرشف",
+    "emptyTitle": "لا توجد مركبات",
+    "emptyBody": "جرّب اسم مالك أو رقم لوحة أو شركة أو موديل آخر للعثور على سجل المركبة.",
+    "emptyActiveTitle": "لا توجد سجلات نشطة",
+    "emptyActiveBody": "أضف مركبة أو استعد سجلًا مؤرشفًا ليظهر في القائمة النشطة.",
+    "emptyArchivedTitle": "لا توجد سجلات مؤرشفة",
+    "emptyArchivedBody": "ستظهر سجلات المركبات المؤرشفة هنا بعد أرشفتها.",
+    "fields": {
+      "ownerName": "اسم المالك/العميل",
+      "plateNumber": "رقم اللوحة",
+      "make": "الشركة/العلامة",
+      "model": "الموديل",
+      "year": "السنة",
+      "color": "اللون",
+      "vehicleType": "نوع المركبة",
+      "totalVisits": "إجمالي الزيارات",
+      "lastServiceDate": "تاريخ آخر صيانة",
+      "currentStatus": "الحالة الحالية",
+      "lastWorkPerformed": "آخر عمل منجز",
+      "notes": "ملاحظات"
+    },
+    "status": {
+      "active": "نشطة",
+      "inWorkshop": "داخل الورشة",
+      "completed": "مكتملة",
+      "cancelled": "ملغاة"
+    },
+    "maintenance": {
+      "title": "ملخص سجل الصيانة"
+    },
+    "history": {
+      "title": "سجل الصيانة",
+      "close": "إغلاق",
+      "emptyTitle": "لا يوجد سجل صيانة",
+      "emptyBody": "ستظهر هنا أوامر العمل المرتبطة بهذه المركبة."
+    },
+    "colors": {
+      "white": "أبيض",
+      "silver": "فضي",
+      "black": "أسود",
+      "blue": "أزرق",
+      "gray": "رمادي"
+    },
+    "types": {
+      "sedan": "سيدان",
+      "suv": "دفع رباعي",
+      "pickup": "بيك أب",
+      "van": "فان"
+    },
+    "form": {
+      "title": "إضافة مركبة",
+      "subtitle": "إنشاء سجل مركبة محلي للتجربة.",
+      "editTitle": "عرض/تعديل المركبة",
+      "editSubtitle": "مراجعة وتحديث سجل المركبة المحلي.",
+      "close": "إغلاق",
+      "ownerPlaceholder": "أدخل اسم المالك/العميل",
+      "platePlaceholder": "أدخل رقم اللوحة",
+      "makePlaceholder": "أدخل الشركة أو العلامة",
+      "modelPlaceholder": "أدخل الموديل",
+      "yearPlaceholder": "أدخل السنة",
+      "colorPlaceholder": "أدخل اللون",
+      "typePlaceholder": "أدخل نوع المركبة",
+      "totalVisitsPlaceholder": "أدخل إجمالي الزيارات",
+      "lastServicePlaceholder": "اختر تاريخ آخر صيانة",
+      "notesPlaceholder": "أضف ملاحظات اختيارية",
+      "save": "حفظ",
+      "cancel": "إلغاء"
+    }
+  },
+  "jobCards": {
+    "title": "أوامر العمل",
+    "subtitle": "متابعة أعمال الورشة وسجل الصيانة",
+    "addButton": "إضافة أمر عمل",
+    "recordCount": "{count} أمر عمل",
+    "searchLabel": "البحث في أوامر العمل",
+    "searchPlaceholder": "ابحث برقم الأمر أو العميل أو المركبة أو اللوحة أو الفني",
+    "cancelArchive": "إلغاء/أرشفة",
+    "emptyTitle": "لا توجد أوامر عمل",
+    "emptyBody": "أنشئ أمر عمل لبدء بناء سجل الصيانة.",
+    "fields": {
+      "jobNumber": "رقم أمر العمل",
+      "vehicle": "المركبة",
+      "date": "تاريخ أمر العمل",
+      "status": "الحالة",
+      "amount": "المبلغ",
+      "complaint": "المشكلة/الشكوى",
+      "workPerformed": "العمل المنجز",
+      "mechanic": "الفني المسؤول",
+      "laborCost": "تكلفة اليد العاملة",
+      "partsCost": "تكلفة القطع",
+      "totalAmount": "الإجمالي",
+      "paymentStatus": "حالة الدفع",
+      "notes": "ملاحظات"
+    },
+    "paymentStatus": {
+      "unpaid": "غير مدفوع",
+      "partial": "مدفوع جزئياً",
+      "paid": "مدفوع"
+    },
+    "form": {
+      "title": "إضافة أمر عمل",
+      "subtitle": "اربط أمر العمل بمركبة لتحديث سجل الصيانة.",
+      "editTitle": "عرض/تعديل أمر العمل",
+      "editSubtitle": "مراجعة وتحديث سجل أمر العمل.",
+      "close": "إغلاق",
+      "jobNumberPlaceholder": "أدخل رقم أمر العمل",
+      "vehiclePlaceholder": "اختر المركبة",
+      "datePlaceholder": "اختر تاريخ أمر العمل",
+      "amountPlaceholder": "أدخل المبلغ",
+      "complaintPlaceholder": "اكتب شكوى العميل",
+      "workPlaceholder": "اكتب العمل المنجز",
+      "mechanicPlaceholder": "أدخل اسم الفني",
+      "laborCostPlaceholder": "أدخل تكلفة اليد العاملة",
+      "partsCostPlaceholder": "أدخل تكلفة القطع",
+      "notesPlaceholder": "أضف ملاحظات اختيارية",
+      "save": "حفظ",
+      "cancel": "إلغاء"
+    }
+  }
+}
