@@ -45,6 +45,14 @@ type VehicleDisplayStatus = "active" | JobCardStatus;
 type RecordTab = "active" | "archived";
 type InventoryUnitType = "piece" | "liter" | "set" | "box";
 type InventoryItemType = "stock" | "service";
+type ExpenseCategory =
+  | "rent"
+  | "salaries"
+  | "utilities"
+  | "equipment"
+  | "fuel"
+  | "miscellaneous";
+type ExpensePaymentMethod = "cash" | "card" | "bankTransfer";
 
 type JobPart = {
   id: number;
@@ -204,6 +212,28 @@ type PurchaseForm = {
   items: PurchaseItemFormLine[];
 };
 
+type Expense = {
+  id: number;
+  title: string;
+  category: ExpenseCategory;
+  amount: number;
+  date: string;
+  paymentMethod: ExpensePaymentMethod;
+  notes: string;
+  createdBy: string;
+  archived: boolean;
+};
+
+type ExpenseForm = {
+  title: string;
+  category: ExpenseCategory;
+  amount: string;
+  date: string;
+  paymentMethod: ExpensePaymentMethod;
+  notes: string;
+  createdBy: string;
+};
+
 type InvoicePart = {
   rowId: string;
   itemName: string;
@@ -274,6 +304,21 @@ const dashboardCards = [
   { key: "monthlyExpenses", translationKey: "cards.monthlyExpenses", value: 38500, currency: true },
   { key: "completedJobs", translationKey: "cards.completedJobs", value: 126 },
 ] as const;
+
+const expenseCategories: ExpenseCategory[] = [
+  "rent",
+  "salaries",
+  "utilities",
+  "equipment",
+  "fuel",
+  "miscellaneous",
+];
+
+const expensePaymentMethods: ExpensePaymentMethod[] = [
+  "cash",
+  "card",
+  "bankTransfer",
+];
 
 const initialCustomers: Customer[] = [
   {
@@ -763,12 +808,58 @@ const initialPurchases: Purchase[] = [
   },
 ];
 
+const initialExpenses: Expense[] = [
+  {
+    id: 1,
+    title: "Workshop rent",
+    category: "rent",
+    amount: 12000,
+    date: "2026-05-01",
+    paymentMethod: "bankTransfer",
+    notes: "Monthly facility rent.",
+    createdBy: "Hamza",
+    archived: false,
+  },
+  {
+    id: 2,
+    title: "Technician salaries",
+    category: "salaries",
+    amount: 18500,
+    date: "2026-05-02",
+    paymentMethod: "bankTransfer",
+    notes: "Payroll advance for service team.",
+    createdBy: "Hamza",
+    archived: false,
+  },
+  {
+    id: 3,
+    title: "Fuel for pickup",
+    category: "fuel",
+    amount: 420,
+    date: "2026-05-04",
+    paymentMethod: "cash",
+    notes: "Customer pickup and supplier visits.",
+    createdBy: "Hamza",
+    archived: false,
+  },
+];
+
 const emptyPurchaseForm: PurchaseForm = {
   supplierName: "",
   purchaseDate: "",
   paymentStatus: "unpaid",
   notes: "",
   items: [],
+};
+
+const emptyExpenseForm: ExpenseForm = {
+  title: "",
+  category: "rent",
+  amount: "",
+  date: "",
+  paymentMethod: "cash",
+  notes: "",
+  createdBy: "Hamza",
 };
 
 const emptyInvoiceForm: InvoiceForm = {
@@ -819,6 +910,10 @@ export default function Home() {
   const [duplicatePurchaseRowId, setDuplicatePurchaseRowId] = useState<string | null>(
     null,
   );
+  const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
+  const [expenseTab, setExpenseTab] = useState<RecordTab>("active");
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [expenseForm, setExpenseForm] = useState<ExpenseForm>(emptyExpenseForm);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [invoiceTab, setInvoiceTab] = useState<RecordTab>("active");
@@ -945,6 +1040,54 @@ export default function Home() {
       ].some((value) => value.toLowerCase().includes(query));
     });
   }, [invoiceSearch, invoices, invoiceTab]);
+
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter((expense) => expense.archived === (expenseTab === "archived"));
+  }, [expenseTab, expenses]);
+
+  const activeExpenses = useMemo(
+    () => expenses.filter((expense) => !expense.archived),
+    [expenses],
+  );
+
+  const currentDate = new Date();
+  const currentWeekday = currentDate.getDay();
+  const weekStartDate = new Date(currentDate);
+  weekStartDate.setDate(currentDate.getDate() - (currentWeekday === 0 ? 6 : currentWeekday - 1));
+  weekStartDate.setHours(0, 0, 0, 0);
+  const weekEndDate = new Date(weekStartDate);
+  weekEndDate.setDate(weekStartDate.getDate() + 6);
+  weekEndDate.setHours(23, 59, 59, 999);
+
+  const monthlyExpenseTotal = activeExpenses.reduce(
+    (total, expense) => {
+      const expenseDate = new Date(expense.date);
+      return expenseDate.getMonth() === currentDate.getMonth() &&
+        expenseDate.getFullYear() === currentDate.getFullYear()
+        ? total + expense.amount
+        : total;
+    },
+    0,
+  );
+  const weeklyExpenseTotal = activeExpenses.reduce(
+    (total, expense) => {
+      const expenseDate = new Date(expense.date);
+      return expenseDate >= weekStartDate && expenseDate <= weekEndDate
+        ? total + expense.amount
+        : total;
+    },
+    0,
+  );
+  const largestExpenseAmount = activeExpenses.reduce(
+    (highestAmount, expense) => Math.max(highestAmount, expense.amount),
+    0,
+  );
+  const expenseCategoryTotals = expenseCategories.map((category) => ({
+    category,
+    total: activeExpenses
+      .filter((expense) => expense.category === category)
+      .reduce((total, expense) => total + expense.amount, 0),
+  }));
 
   const getVehicleJobs = (vehicleId: number) => {
     return jobCards.filter((jobCard) => jobCard.vehicleId === vehicleId);
@@ -1722,6 +1865,53 @@ export default function Home() {
     closePurchaseModal();
   };
 
+  const openExpenseModal = () => {
+    setExpenseForm({
+      ...emptyExpenseForm,
+      date: getTodayInputValue(),
+    });
+    setIsExpenseModalOpen(true);
+  };
+
+  const closeExpenseModal = () => {
+    setIsExpenseModalOpen(false);
+    setExpenseForm(emptyExpenseForm);
+  };
+
+  const saveExpense = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const amount = parsePositiveNumber(expenseForm.amount);
+
+    if (amount <= 0) {
+      return;
+    }
+
+    const nextExpense: Expense = {
+      id: Date.now(),
+      title: expenseForm.title.trim(),
+      category: expenseForm.category,
+      amount,
+      date: expenseForm.date,
+      paymentMethod: expenseForm.paymentMethod,
+      notes: expenseForm.notes.trim(),
+      createdBy: expenseForm.createdBy.trim() || "Hamza",
+      archived: false,
+    };
+
+    setExpenses((currentExpenses) => [nextExpense, ...currentExpenses]);
+    closeExpenseModal();
+  };
+
+  const setExpenseArchived = (expenseId: number, archived: boolean) => {
+    setExpenses((currentExpenses) =>
+      currentExpenses.map((expense) =>
+        expense.id === expenseId ? { ...expense, archived } : expense,
+      ),
+    );
+    showToast(archived ? "toast.recordArchived" : "toast.recordRestored");
+  };
+
   const getCompletedJobCardsForInvoice = () => {
     const invoicedJobCardIds = new Set(
       invoices.filter((invoice) => !invoice.archived).map((invoice) => invoice.jobCardId),
@@ -1878,7 +2068,7 @@ export default function Home() {
     jobCards: { title: "jobCards.title", subtitle: "jobCards.subtitle" },
     inventory: { title: "inventory.title", subtitle: "inventory.subtitle" },
     purchases: { title: "purchases.title", subtitle: "purchases.subtitle" },
-    expenses: { title: "topbar.title", subtitle: "topbar.subtitle" },
+    expenses: { title: "expenses.title", subtitle: "expenses.subtitle" },
     invoices: { title: "invoices.title", subtitle: "invoices.subtitle" },
     reports: { title: "topbar.title", subtitle: "topbar.subtitle" },
     settings: { title: "topbar.title", subtitle: "topbar.subtitle" },
@@ -2120,6 +2310,27 @@ export default function Home() {
                 purchaseForm={purchaseForm}
                 purchases={purchases}
                 t={t}
+              />
+            ) : activeSection === "expenses" ? (
+              <ExpensesSection
+                activeTab={expenseTab}
+                categoryTotals={expenseCategoryTotals}
+                expenseForm={expenseForm}
+                expenses={filteredExpenses}
+                expenseCount={activeExpenses.length}
+                formatDate={formatDate}
+                formatMoney={formatMoney}
+                isModalOpen={isExpenseModalOpen}
+                largestExpense={largestExpenseAmount}
+                monthlyExpenseTotal={monthlyExpenseTotal}
+                onArchivedChange={setExpenseArchived}
+                onCloseModal={closeExpenseModal}
+                onOpenModal={openExpenseModal}
+                onSave={saveExpense}
+                onTabChange={setExpenseTab}
+                onUpdateForm={setExpenseForm}
+                t={t}
+                weeklyExpenseTotal={weeklyExpenseTotal}
               />
             ) : activeSection === "invoices" ? (
               <>
@@ -4236,6 +4447,258 @@ function PrintInvoiceModal({
           </section>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ExpensesSection({
+  activeTab,
+  categoryTotals,
+  expenseCount,
+  expenseForm,
+  expenses,
+  formatDate,
+  formatMoney,
+  isModalOpen,
+  largestExpense,
+  monthlyExpenseTotal,
+  onArchivedChange,
+  onCloseModal,
+  onOpenModal,
+  onSave,
+  onTabChange,
+  onUpdateForm,
+  t,
+  weeklyExpenseTotal,
+}: {
+  activeTab: RecordTab;
+  categoryTotals: Array<{ category: ExpenseCategory; total: number }>;
+  expenseCount: number;
+  expenseForm: ExpenseForm;
+  expenses: Expense[];
+  formatDate: (value: string) => string;
+  formatMoney: (value: number) => string;
+  isModalOpen: boolean;
+  largestExpense: number;
+  monthlyExpenseTotal: number;
+  onArchivedChange: (expenseId: number, archived: boolean) => void;
+  onCloseModal: () => void;
+  onOpenModal: () => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onTabChange: (value: RecordTab) => void;
+  onUpdateForm: (value: ExpenseForm) => void;
+  t: (key: string) => string;
+  weeklyExpenseTotal: number;
+}) {
+  const sortedExpenses = expenses.toSorted((firstExpense, secondExpense) =>
+    secondExpense.date.localeCompare(firstExpense.date),
+  );
+
+  return (
+    <>
+      <section className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-medium text-emerald-700">
+            {t(activeTab === "archived" ? "expenses.archivedRecordCount" : "expenses.activeRecordCount").replace("{count}", String(expenses.length))}
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-normal">
+            {t("expenses.title")}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            {t("expenses.subtitle")}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onOpenModal}
+          className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800"
+        >
+          {t("expenses.addButton")}
+        </button>
+      </section>
+
+      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-slate-500">{t("expenses.totals.monthly")}</p>
+          <p className="mt-2 text-2xl font-black tracking-normal text-slate-950">
+            {formatMoney(monthlyExpenseTotal)}
+          </p>
+        </article>
+        <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-slate-500">{t("expenses.totals.weekly")}</p>
+          <p className="mt-2 text-2xl font-black tracking-normal text-slate-950">
+            {formatMoney(weeklyExpenseTotal)}
+          </p>
+        </article>
+        <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-slate-500">{t("expenses.totals.largest")}</p>
+          <p className="mt-2 text-2xl font-black tracking-normal text-slate-950">
+            {formatMoney(largestExpense)}
+          </p>
+        </article>
+        <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-slate-500">{t("expenses.totals.count")}</p>
+          <p className="mt-2 text-2xl font-black tracking-normal text-slate-950">
+            {expenseCount}
+          </p>
+        </article>
+      </section>
+
+      <section className="mb-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold tracking-normal text-slate-950">
+              {t("expenses.categories.title")}
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">{t("expenses.categories.subtitle")}</p>
+          </div>
+          <RecordTabs activeTab={activeTab} onTabChange={onTabChange} t={t} />
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          {categoryTotals.map((categoryTotal) => (
+            <article
+              key={categoryTotal.category}
+              className="rounded-lg border border-slate-200 bg-slate-50 p-4"
+            >
+              <p className="text-xs font-bold uppercase text-slate-500">
+                {t(`expenses.category.${categoryTotal.category}`)}
+              </p>
+              <p className="mt-2 text-base font-black text-slate-950">
+                {formatMoney(categoryTotal.total)}
+              </p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {sortedExpenses.length > 0 ? (
+        <section className="grid gap-4 xl:grid-cols-2">
+          {sortedExpenses.map((expense) => (
+            <article key={expense.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase text-emerald-700">
+                    {t(`expenses.category.${expense.category}`)}
+                  </p>
+                  <h3 className="mt-1 text-xl font-semibold tracking-normal text-slate-950">
+                    {expense.title}
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">{formatDate(expense.date)}</p>
+                </div>
+                {expense.archived ? (
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">
+                    {t("common.archived")}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                    {formatMoney(expense.amount)}
+                  </span>
+                )}
+              </div>
+
+              <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+                <CustomerField label={t("expenses.fields.amount")} value={formatMoney(expense.amount)} />
+                <CustomerField label={t("expenses.fields.paymentMethod")} value={t(`expenses.paymentMethod.${expense.paymentMethod}`)} />
+                <CustomerField label={t("expenses.fields.createdBy")} value={expense.createdBy} />
+                <CustomerField label={t("expenses.fields.notes")} value={expense.notes || t("common.notAvailable")} />
+              </dl>
+
+              <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => onArchivedChange(expense.id, !expense.archived)}
+                  className={`h-10 rounded-md border px-3 text-sm font-semibold transition ${expense.archived ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50" : "border-amber-200 text-amber-700 hover:bg-amber-50"}`}
+                >
+                  {t(expense.archived ? "common.restore" : "common.archive")}
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+      ) : (
+        <section className="rounded-lg border border-dashed border-slate-300 bg-white px-5 py-12 text-center shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-950">
+            {t(activeTab === "archived" ? "expenses.emptyArchivedTitle" : "expenses.emptyActiveTitle")}
+          </h3>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+            {t(activeTab === "archived" ? "expenses.emptyArchivedBody" : "expenses.emptyActiveBody")}
+          </p>
+        </section>
+      )}
+
+      {isModalOpen ? (
+        <ExpenseModal
+          expenseForm={expenseForm}
+          onClose={onCloseModal}
+          onSave={onSave}
+          onUpdateForm={onUpdateForm}
+          t={t}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function ExpenseModal({
+  expenseForm,
+  onClose,
+  onSave,
+  onUpdateForm,
+  t,
+}: {
+  expenseForm: ExpenseForm;
+  onClose: () => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdateForm: (value: ExpenseForm) => void;
+  t: (key: string) => string;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
+      <form onSubmit={onSave} className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 p-5">
+          <div>
+            <h2 className="text-xl font-semibold tracking-normal">{t("expenses.form.title")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t("expenses.form.subtitle")}</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">{t("expenses.form.close")}</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label={t("expenses.fields.title")} value={expenseForm.title} onChange={(value) => onUpdateForm({ ...expenseForm, title: value })} placeholder={t("expenses.form.titlePlaceholder")} required />
+            <FormField inputType="number" min="0" label={t("expenses.fields.amount")} value={expenseForm.amount} onChange={(value) => onUpdateForm({ ...expenseForm, amount: value })} placeholder={t("expenses.form.amountPlaceholder")} required />
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">{t("expenses.fields.category")}</span>
+              <select value={expenseForm.category} onChange={(event) => onUpdateForm({ ...expenseForm, category: event.target.value as ExpenseCategory })} className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600">
+                {expenseCategories.map((category) => (
+                  <option key={category} value={category}>{t(`expenses.category.${category}`)}</option>
+                ))}
+              </select>
+            </label>
+            <FormField inputType="date" label={t("expenses.fields.date")} value={expenseForm.date} onChange={(value) => onUpdateForm({ ...expenseForm, date: value })} placeholder={t("expenses.form.datePlaceholder")} required />
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">{t("expenses.fields.paymentMethod")}</span>
+              <select value={expenseForm.paymentMethod} onChange={(event) => onUpdateForm({ ...expenseForm, paymentMethod: event.target.value as ExpensePaymentMethod })} className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600">
+                {expensePaymentMethods.map((paymentMethod) => (
+                  <option key={paymentMethod} value={paymentMethod}>{t(`expenses.paymentMethod.${paymentMethod}`)}</option>
+                ))}
+              </select>
+            </label>
+            <FormField label={t("expenses.fields.createdBy")} value={expenseForm.createdBy} onChange={(value) => onUpdateForm({ ...expenseForm, createdBy: value })} placeholder={t("expenses.form.createdByPlaceholder")} required />
+          </div>
+
+          <label className="mt-4 block">
+            <span className="text-sm font-medium text-slate-700">{t("expenses.fields.notes")}</span>
+            <textarea value={expenseForm.notes} onChange={(event) => onUpdateForm({ ...expenseForm, notes: event.target.value })} placeholder={t("expenses.form.notesPlaceholder")} rows={4} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600" />
+          </label>
+        </div>
+
+        <div className="sticky bottom-0 flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white p-5 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} className="h-11 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">{t("expenses.form.cancel")}</button>
+          <button type="submit" className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800">{t("expenses.form.save")}</button>
+        </div>
+      </form>
     </div>
   );
 }

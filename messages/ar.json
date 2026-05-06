@@ -301,6 +301,61 @@
       "cancel": "إلغاء"
     }
   },
+  "expenses": {
+    "title": "المصروفات",
+    "subtitle": "متابعة تكاليف التشغيل والمدفوعات في الورشة",
+    "addButton": "إضافة مصروف",
+    "activeRecordCount": "{count} سجل مصروف نشط",
+    "archivedRecordCount": "{count} سجل مصروف مؤرشف",
+    "emptyActiveTitle": "لا توجد مصروفات نشطة",
+    "emptyActiveBody": "أضف الإيجار أو الرواتب أو الخدمات أو المعدات أو الوقود أو مصروفات الورشة الأخرى.",
+    "emptyArchivedTitle": "لا توجد مصروفات مؤرشفة",
+    "emptyArchivedBody": "ستظهر المصروفات المؤرشفة هنا بعد أرشفتها.",
+    "fields": {
+      "title": "العنوان",
+      "category": "الفئة",
+      "amount": "المبلغ",
+      "date": "التاريخ",
+      "paymentMethod": "طريقة الدفع",
+      "notes": "ملاحظات",
+      "createdBy": "أنشئ بواسطة"
+    },
+    "category": {
+      "rent": "الإيجار",
+      "salaries": "الرواتب",
+      "utilities": "الخدمات",
+      "equipment": "المعدات",
+      "fuel": "الوقود",
+      "miscellaneous": "متفرقات"
+    },
+    "paymentMethod": {
+      "cash": "نقداً",
+      "card": "بطاقة",
+      "bankTransfer": "تحويل بنكي"
+    },
+    "totals": {
+      "monthly": "مصروفات الشهر",
+      "weekly": "مصروفات هذا الأسبوع",
+      "largest": "أكبر مصروف",
+      "count": "عدد المصروفات"
+    },
+    "categories": {
+      "title": "فئات المصروفات",
+      "subtitle": "إجماليات المصروفات النشطة حسب الفئة"
+    },
+    "form": {
+      "title": "إضافة مصروف",
+      "subtitle": "سجل تكاليف التشغيل والمصروفات اليومية.",
+      "close": "إغلاق",
+      "titlePlaceholder": "أدخل عنوان المصروف",
+      "amountPlaceholder": "أدخل المبلغ",
+      "datePlaceholder": "اختر تاريخ المصروف",
+      "createdByPlaceholder": "أدخل اسم الموظف",
+      "notesPlaceholder": "أضف ملاحظات اختيارية",
+      "save": "حفظ المصروف",
+      "cancel": "إلغاء"
+    }
+  },
   "invoices": {
     "title": "الفواتير",
     "subtitle": "إنشاء فواتير من أوامر العمل المكتملة",

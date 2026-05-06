@@ -301,6 +301,61 @@
       "cancel": "Cancel"
     }
   },
+  "expenses": {
+    "title": "Expenses",
+    "subtitle": "Track workshop operating costs and payment records",
+    "addButton": "Add Expense",
+    "activeRecordCount": "{count} active expense records",
+    "archivedRecordCount": "{count} archived expense records",
+    "emptyActiveTitle": "No active expenses found",
+    "emptyActiveBody": "Add rent, salaries, utilities, equipment, fuel, or other workshop expenses.",
+    "emptyArchivedTitle": "No archived expenses found",
+    "emptyArchivedBody": "Archived expenses will appear here after you archive them.",
+    "fields": {
+      "title": "Title",
+      "category": "Category",
+      "amount": "Amount",
+      "date": "Date",
+      "paymentMethod": "Payment method",
+      "notes": "Notes",
+      "createdBy": "Created by"
+    },
+    "category": {
+      "rent": "Rent",
+      "salaries": "Salaries",
+      "utilities": "Utilities",
+      "equipment": "Equipment",
+      "fuel": "Fuel",
+      "miscellaneous": "Miscellaneous"
+    },
+    "paymentMethod": {
+      "cash": "Cash",
+      "card": "Card",
+      "bankTransfer": "Bank transfer"
+    },
+    "totals": {
+      "monthly": "Monthly expenses",
+      "weekly": "This week expenses",
+      "largest": "Largest expense",
+      "count": "Expense count"
+    },
+    "categories": {
+      "title": "Expense categories",
+      "subtitle": "Active expense totals by category"
+    },
+    "form": {
+      "title": "Add Expense",
+      "subtitle": "Record workshop overheads and operational spending.",
+      "close": "Close",
+      "titlePlaceholder": "Enter expense title",
+      "amountPlaceholder": "Enter amount",
+      "datePlaceholder": "Select expense date",
+      "createdByPlaceholder": "Enter staff name",
+      "notesPlaceholder": "Add optional notes",
+      "save": "Save Expense",
+      "cancel": "Cancel"
+    }
+  },
   "invoices": {
     "title": "Invoices",
     "subtitle": "Create invoices from completed job cards",
