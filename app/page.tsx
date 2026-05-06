@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { useLanguage } from "./language-provider";
 
 type SectionKey =
@@ -55,6 +62,14 @@ type ExpenseCategory =
 type ExpensePaymentMethod = "cash" | "card" | "bankTransfer";
 type ReportRange = "today" | "week" | "month" | "all";
 type AppLanguage = "en" | "ar";
+
+const getPaymentStatusFromAmounts = (paidAmount: number, grandTotal: number) => {
+  if (paidAmount <= 0) {
+    return "unpaid" as const;
+  }
+
+  return paidAmount >= grandTotal ? ("paid" as const) : ("partial" as const);
+};
 
 type WorkshopSettings = {
   workshopName: string;
@@ -140,6 +155,7 @@ type JobCard = {
   laborCost: number;
   partsCost: number;
   partsUsed: JobPart[];
+  paidAmount: number;
   paymentStatus: PaymentStatus;
   notes: string;
   archived: boolean;
@@ -158,6 +174,7 @@ type JobCardForm = {
   laborCost: string;
   partsCost: string;
   partsUsed: JobPartFormLine[];
+  paidAmount: string;
   paymentStatus: PaymentStatus;
   notes: string;
 };
@@ -288,6 +305,7 @@ type Invoice = {
   partsCost: number;
   subtotal: number;
   discount: number;
+  taxPercentage: number;
   taxAmount: number;
   grandTotal: number;
   paidAmount: number;
@@ -302,8 +320,9 @@ type InvoiceForm = {
   invoiceDate: string;
   dueDate: string;
   discount: string;
-  taxAmount: string;
+  taxPercentage: string;
   paidAmount: string;
+  paymentStatus: PaymentStatus;
   notes: string;
 };
 
@@ -537,6 +556,7 @@ const initialJobCards: JobCard[] = [
     laborCost: 450,
     partsCost: 400,
     partsUsed: [],
+    paidAmount: 0,
     paymentStatus: "unpaid",
     notes: "Brake inspection and oil service",
     archived: false,
@@ -559,6 +579,7 @@ const initialJobCards: JobCard[] = [
     laborCost: 220,
     partsCost: 200,
     partsUsed: [],
+    paidAmount: 420,
     paymentStatus: "paid",
     notes: "Regular service",
     archived: false,
@@ -581,6 +602,7 @@ const initialJobCards: JobCard[] = [
     laborCost: 500,
     partsCost: 700,
     partsUsed: [],
+    paidAmount: 500,
     paymentStatus: "partial",
     notes: "Suspension repair",
     archived: false,
@@ -603,6 +625,7 @@ const initialJobCards: JobCard[] = [
     laborCost: 180,
     partsCost: 140,
     partsUsed: [],
+    paidAmount: 320,
     paymentStatus: "paid",
     notes: "AC diagnosis",
     archived: false,
@@ -625,6 +648,7 @@ const initialJobCards: JobCard[] = [
     laborCost: 390,
     partsCost: 250,
     partsUsed: [],
+    paidAmount: 0,
     paymentStatus: "unpaid",
     notes: "Transmission check",
     archived: false,
@@ -647,6 +671,7 @@ const initialJobCards: JobCard[] = [
     laborCost: 480,
     partsCost: 500,
     partsUsed: [],
+    paidAmount: 980,
     paymentStatus: "paid",
     notes: "Fleet van service",
     archived: false,
@@ -666,6 +691,7 @@ const emptyJobCardForm: JobCardForm = {
   laborCost: "0",
   partsCost: "0",
   partsUsed: [],
+  paidAmount: "0",
   paymentStatus: "unpaid",
   notes: "",
 };
@@ -919,35 +945,220 @@ const emptyInvoiceForm: InvoiceForm = {
   invoiceDate: "",
   dueDate: "",
   discount: "0",
-  taxAmount: "0",
+  taxPercentage: "0",
   paidAmount: "0",
+  paymentStatus: "unpaid",
   notes: "",
 };
 
+const demoDataStorageKey = "car-dc9-demo-data-v1";
+const activeSectionStorageKey = "car-dc9-active-section-v1";
+
+type DemoPersistedData = {
+  customers: Customer[];
+  vehicles: Vehicle[];
+  jobCards: JobCard[];
+  inventoryItems: InventoryItem[];
+  purchases: Purchase[];
+  expenses: Expense[];
+  invoices: Invoice[];
+  settings: WorkshopSettings;
+};
+
+const isBrowser = () => typeof window !== "undefined";
+const subscribeToHydration = () => () => {};
+const getHydratedSnapshot = () => true;
+const getServerHydrationSnapshot = () => false;
+
+const getDefaultDemoData = (): DemoPersistedData => ({
+  customers: initialCustomers,
+  vehicles: initialVehicles,
+  jobCards: initialJobCards,
+  inventoryItems: initialInventoryItems,
+  purchases: initialPurchases,
+  expenses: initialExpenses,
+  invoices: [],
+  settings: defaultWorkshopSettings,
+});
+
+const safeParseJson = <T,>(value: string | null, fallback: T): T => {
+  if (!value) {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+const safeLocalStorageGet = <T,>(key: string, fallback: T): T => {
+  if (!isBrowser()) {
+    return fallback;
+  }
+
+  return safeParseJson(window.localStorage.getItem(key), fallback);
+};
+
+const safeLocalStorageSet = (key: string, value: unknown) => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Demo persistence should never block core workshop flows.
+  }
+};
+
+const safeLocalStorageRemove = (key: string) => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures in demo mode.
+  }
+};
+
+const isSectionKey = (value: string): value is SectionKey =>
+  navigationItems.some((item) => item.key === value);
+
+const normalizeSaudiPhone = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+
+  if (!digits) {
+    return "";
+  }
+
+  const withoutInternationalPrefix = digits.startsWith("00966")
+    ? digits.slice(2)
+    : digits;
+  const localDigits = withoutInternationalPrefix.startsWith("966")
+    ? withoutInternationalPrefix.slice(3)
+    : withoutInternationalPrefix.startsWith("0")
+      ? withoutInternationalPrefix.slice(1)
+      : withoutInternationalPrefix;
+  const mobileDigits = localDigits.slice(0, 9);
+
+  if (!mobileDigits) {
+    return "+966";
+  }
+
+  return `+966${mobileDigits}`;
+};
+
+const formatSaudiPhone = (value: string) => {
+  const normalizedPhone = normalizeSaudiPhone(value);
+  const mobileDigits = normalizedPhone.replace(/\D/g, "").replace(/^966/, "");
+
+  if (!mobileDigits) {
+    return normalizedPhone;
+  }
+
+  const firstGroup = mobileDigits.slice(0, 2);
+  const secondGroup = mobileDigits.slice(2, 5);
+  const thirdGroup = mobileDigits.slice(5, 9);
+
+  return ["+966", firstGroup, secondGroup, thirdGroup].filter(Boolean).join(" ");
+};
+
+const isValidSaudiMobilePhone = (value: string) =>
+  /^(\+9665\d{8})$/.test(normalizeSaudiPhone(value));
+
+const getStoredDemoData = () => {
+  const fallback = getDefaultDemoData();
+  const storedData = safeLocalStorageGet<Partial<DemoPersistedData>>(
+    demoDataStorageKey,
+    fallback,
+  );
+
+  return {
+    customers: (Array.isArray(storedData.customers) ? storedData.customers : fallback.customers).map(
+      (customer) => ({
+        ...customer,
+        phone: normalizeSaudiPhone(customer.phone),
+      }),
+    ),
+    vehicles: Array.isArray(storedData.vehicles) ? storedData.vehicles : fallback.vehicles,
+    jobCards: (Array.isArray(storedData.jobCards) ? storedData.jobCards : fallback.jobCards).map(
+      (jobCard) => {
+        const totalAmount = jobCard.laborCost + jobCard.partsCost;
+        const fallbackPaidAmount =
+          jobCard.paymentStatus === "paid" ? totalAmount : 0;
+
+        return {
+          ...jobCard,
+          paidAmount:
+            typeof jobCard.paidAmount === "number" &&
+            Number.isFinite(jobCard.paidAmount)
+              ? jobCard.paidAmount
+              : fallbackPaidAmount,
+        };
+      },
+    ),
+    inventoryItems: Array.isArray(storedData.inventoryItems)
+      ? storedData.inventoryItems
+      : fallback.inventoryItems,
+    purchases: Array.isArray(storedData.purchases) ? storedData.purchases : fallback.purchases,
+    expenses: Array.isArray(storedData.expenses) ? storedData.expenses : fallback.expenses,
+    invoices: (Array.isArray(storedData.invoices) ? storedData.invoices : fallback.invoices).map(
+      (invoice) => ({
+        ...invoice,
+        customerPhone: normalizeSaudiPhone(invoice.customerPhone),
+      }),
+    ),
+    settings: {
+      ...fallback.settings,
+      ...(storedData.settings ?? {}),
+      phoneNumber: normalizeSaudiPhone(
+        storedData.settings?.phoneNumber ?? fallback.settings.phoneNumber,
+      ),
+    },
+  };
+};
+
 export default function Home() {
-  const { dir, locale, setLocale, t } = useLanguage();
-  const [activeSection, setActiveSection] = useState<SectionKey>("dashboard");
-  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
+  const { dir, isLanguageReady, locale, setLocale, t } = useLanguage();
+  const isAppHydrated = useSyncExternalStore(
+    subscribeToHydration,
+    getHydratedSnapshot,
+    getServerHydrationSnapshot,
+  );
+  const [initialDemoData] = useState<DemoPersistedData>(getStoredDemoData);
+  const [activeSection, setActiveSection] = useState<SectionKey>(() => {
+    const storedSection = safeLocalStorageGet<string>(
+      activeSectionStorageKey,
+      "dashboard",
+    );
+
+    return isSectionKey(storedSection) ? storedSection : "dashboard";
+  });
+  const [customers, setCustomers] = useState<Customer[]>(initialDemoData.customers);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [customerForm, setCustomerForm] = useState<CustomerForm>(emptyCustomerForm);
   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
   const [customerTab, setCustomerTab] = useState<RecordTab>("active");
-  const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
+  const [vehicles, setVehicles] = useState<Vehicle[]>(initialDemoData.vehicles);
   const [vehicleSearch, setVehicleSearch] = useState("");
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
   const [vehicleForm, setVehicleForm] = useState<VehicleForm>(emptyVehicleForm);
   const [editingVehicleId, setEditingVehicleId] = useState<number | null>(null);
   const [historyVehicleId, setHistoryVehicleId] = useState<number | null>(null);
   const [vehicleTab, setVehicleTab] = useState<RecordTab>("active");
-  const [jobCards, setJobCards] = useState<JobCard[]>(initialJobCards);
+  const [jobCards, setJobCards] = useState<JobCard[]>(initialDemoData.jobCards);
   const [isJobCardModalOpen, setIsJobCardModalOpen] = useState(false);
   const [jobCardForm, setJobCardForm] = useState<JobCardForm>(emptyJobCardForm);
   const [editingJobCardId, setEditingJobCardId] = useState<number | null>(null);
   const [jobCardTab, setJobCardTab] = useState<RecordTab>("active");
   const [jobCardSearch, setJobCardSearch] = useState("");
   const [inventoryItems, setInventoryItems] =
-    useState<InventoryItem[]>(initialInventoryItems);
+    useState<InventoryItem[]>(initialDemoData.inventoryItems);
   const [inventorySearch, setInventorySearch] = useState("");
   const [inventoryTab, setInventoryTab] = useState<RecordTab>("active");
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
@@ -955,18 +1166,18 @@ export default function Home() {
     useState<InventoryForm>(emptyInventoryForm);
   const [editingInventoryItemId, setEditingInventoryItemId] =
     useState<number | null>(null);
-  const [purchases, setPurchases] = useState<Purchase[]>(initialPurchases);
+  const [purchases, setPurchases] = useState<Purchase[]>(initialDemoData.purchases);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [purchaseForm, setPurchaseForm] = useState<PurchaseForm>(emptyPurchaseForm);
   const [expandedPurchaseId, setExpandedPurchaseId] = useState<number | null>(null);
   const [duplicatePurchaseRowId, setDuplicatePurchaseRowId] = useState<string | null>(
     null,
   );
-  const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
+  const [expenses, setExpenses] = useState<Expense[]>(initialDemoData.expenses);
   const [expenseTab, setExpenseTab] = useState<RecordTab>("active");
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState<ExpenseForm>(emptyExpenseForm);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>(initialDemoData.invoices);
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [invoiceTab, setInvoiceTab] = useState<RecordTab>("active");
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
@@ -974,9 +1185,9 @@ export default function Home() {
   const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null);
   const [printInvoiceId, setPrintInvoiceId] = useState<number | null>(null);
   const [reportRange, setReportRange] = useState<ReportRange>("month");
-  const [settings, setSettings] = useState<WorkshopSettings>(defaultWorkshopSettings);
+  const [settings, setSettings] = useState<WorkshopSettings>(initialDemoData.settings);
   const [settingsDraft, setSettingsDraft] = useState<WorkshopSettings>(
-    defaultWorkshopSettings,
+    initialDemoData.settings,
   );
   const [settingsSavedMessage, setSettingsSavedMessage] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
@@ -986,12 +1197,50 @@ export default function Home() {
   const workshopSubtitle = isArabic ? settings.arabicSubtitle : settings.englishSubtitle;
 
   useEffect(() => {
+    if (!isAppHydrated) {
+      return;
+    }
+
+    safeLocalStorageSet(activeSectionStorageKey, activeSection);
+  }, [activeSection, isAppHydrated]);
+
+  useEffect(() => {
+    if (!isAppHydrated) {
+      return;
+    }
+
+    safeLocalStorageSet(demoDataStorageKey, {
+      customers,
+      vehicles,
+      jobCards,
+      inventoryItems,
+      purchases,
+      expenses,
+      invoices,
+      settings,
+    } satisfies DemoPersistedData);
+  }, [
+    customers,
+    expenses,
+    inventoryItems,
+    invoices,
+    jobCards,
+    purchases,
+    settings,
+    vehicles,
+    isAppHydrated,
+  ]);
+
+  useEffect(() => {
     document.body.classList.toggle("invoice-printing", printInvoiceId !== null);
 
     return () => {
       document.body.classList.remove("invoice-printing");
     };
   }, [printInvoiceId]);
+
+  const formatPhone = (value: string) =>
+    value ? formatSaudiPhone(value) : t("common.notAvailable");
 
   const filteredCustomers = useMemo(() => {
     const query = customerSearch.trim().toLowerCase();
@@ -1005,7 +1254,7 @@ export default function Home() {
         return true;
       }
 
-      return [customer.name, customer.phone, customer.city].some((value) =>
+      return [customer.name, customer.phone, formatSaudiPhone(customer.phone), customer.city].some((value) =>
         value.toLowerCase().includes(query),
       );
     });
@@ -1093,6 +1342,7 @@ export default function Home() {
         invoice.invoiceNumber,
         invoice.customerName,
         invoice.customerPhone,
+        formatSaudiPhone(invoice.customerPhone),
         invoice.vehicle,
         invoice.plateNumber,
         invoice.jobCardNumber,
@@ -1367,23 +1617,80 @@ export default function Home() {
     return paidAmount >= grandTotal ? ("paid" as const) : ("partial" as const);
   };
 
+  const getSyncedPaymentValues = (
+    paymentStatus: PaymentStatus,
+    paidAmount: number,
+    totalAmount: number,
+  ) => {
+    if (paymentStatus === "paid") {
+      return {
+        paidAmount: totalAmount,
+        paymentStatus: "paid" as const,
+      };
+    }
+
+    if (paymentStatus === "unpaid") {
+      return {
+        paidAmount: 0,
+        paymentStatus: "unpaid" as const,
+      };
+    }
+
+    const safePaidAmount = Math.min(Math.max(0, paidAmount), totalAmount);
+
+    return {
+      paidAmount: safePaidAmount,
+      paymentStatus: getPaymentStatusFromAmounts(safePaidAmount, totalAmount),
+    };
+  };
+
   const getInvoiceCalculations = (
     laborCost: number,
     partsCost: number,
     discount: number,
-    taxAmount: number,
+    taxPercentage: number,
     paidAmount: number,
   ) => {
     const subtotal = laborCost + partsCost;
+    const taxAmount = subtotal * (taxPercentage / 100);
     const grandTotal = Math.max(0, subtotal + taxAmount - discount);
     const remainingBalance = Math.max(0, grandTotal - paidAmount);
 
     return {
       subtotal,
+      taxAmount,
       grandTotal,
       remainingBalance,
       paymentStatus: getPaymentStatusFromAmounts(paidAmount, grandTotal),
     };
+  };
+
+  const getDefaultInvoicePaidAmountFromJobCard = (
+    jobCard: JobCard,
+    discount: number,
+    taxPercentage: number,
+  ) => {
+    const availablePaidAmount =
+      typeof jobCard.paidAmount === "number" &&
+      Number.isFinite(jobCard.paidAmount)
+        ? jobCard.paidAmount
+        : 0;
+
+    if (jobCard.paymentStatus === "partial") {
+      return availablePaidAmount;
+    }
+
+    if (jobCard.paymentStatus === "unpaid") {
+      return 0;
+    }
+
+    return getInvoiceCalculations(
+      jobCard.laborCost,
+      jobCard.partsCost,
+      discount,
+      taxPercentage,
+      0,
+    ).grandTotal;
   };
 
   const getJobPartsFromForm = () => {
@@ -1519,7 +1826,7 @@ export default function Home() {
             ? {
                 ...customer,
                 name: customerForm.name.trim(),
-                phone: customerForm.phone.trim(),
+                phone: normalizeSaudiPhone(customerForm.phone),
                 city: customerForm.city.trim(),
                 type: customerForm.type,
                 notes: customerForm.notes.trim(),
@@ -1534,7 +1841,7 @@ export default function Home() {
     const nextCustomer: Customer = {
       id: Date.now(),
       name: customerForm.name.trim(),
-      phone: customerForm.phone.trim(),
+      phone: normalizeSaudiPhone(customerForm.phone),
       city: customerForm.city.trim(),
       type: customerForm.type,
       notes: customerForm.notes.trim(),
@@ -1698,6 +2005,7 @@ export default function Home() {
           quantity: String(part.quantity),
           unitSellingPrice: String(part.unitSellingPrice),
         })),
+        paidAmount: String(jobCard.paidAmount),
         paymentStatus: jobCard.paymentStatus,
         notes: jobCard.notes,
       });
@@ -1707,6 +2015,7 @@ export default function Home() {
         ...emptyJobCardForm,
         jobNumber: getNextJobNumber(),
         date: getTodayInputValue(),
+        paidAmount: "0",
         paymentStatus: settings.defaultPaymentStatus,
       });
     }
@@ -1750,6 +2059,13 @@ export default function Home() {
       : undefined;
     const partsUsed = getJobPartsFromForm();
     const partsCost = partsUsed.reduce((total, part) => total + part.lineTotal, 0);
+    const laborCost = parsePositiveNumber(jobCardForm.laborCost);
+    const totalAmount = laborCost + partsCost;
+    const syncedPayment = getSyncedPaymentValues(
+      jobCardForm.paymentStatus,
+      parsePositiveNumber(jobCardForm.paidAmount),
+      totalAmount,
+    );
     const isSavingCompletedJob = jobCardForm.status === "completed";
     const shouldDeductStock =
       isSavingCompletedJob && existingJobCard?.stockDeducted !== true;
@@ -1779,10 +2095,11 @@ export default function Home() {
       complaint: jobCardForm.complaint.trim(),
       workPerformed: jobCardForm.workPerformed.trim(),
       mechanic: jobCardForm.mechanic.trim(),
-      laborCost: parsePositiveNumber(jobCardForm.laborCost),
+      laborCost,
       partsCost,
       partsUsed,
-      paymentStatus: jobCardForm.paymentStatus,
+      paidAmount: syncedPayment.paidAmount,
+      paymentStatus: syncedPayment.paymentStatus,
       notes: jobCardForm.notes.trim(),
       stockDeducted: existingJobCard?.stockDeducted === true || shouldDeductStock,
       deductedParts: shouldDeductStock
@@ -2097,8 +2414,9 @@ export default function Home() {
         invoiceDate: invoice.invoiceDate,
         dueDate: invoice.dueDate,
         discount: String(invoice.discount),
-        taxAmount: String(invoice.taxAmount),
+        taxPercentage: String(invoice.taxPercentage),
         paidAmount: String(invoice.paidAmount),
+        paymentStatus: invoice.paymentStatus,
         notes: invoice.notes,
       });
     } else {
@@ -2107,6 +2425,8 @@ export default function Home() {
         ...emptyInvoiceForm,
         invoiceDate: getTodayInputValue(),
         dueDate: getTodayInputValue(),
+        taxPercentage: settings.defaultVatPercentage,
+        paymentStatus: "unpaid",
       });
     }
 
@@ -2122,13 +2442,13 @@ export default function Home() {
   const buildInvoiceValues = (jobCard: JobCard, existingInvoice?: Invoice) => {
     const customer = customers.find((customerRecord) => customerRecord.id === jobCard.customerId);
     const discount = parsePositiveNumber(invoiceForm.discount);
-    const taxAmount = parsePositiveNumber(invoiceForm.taxAmount);
+    const taxPercentage = parsePositiveNumber(invoiceForm.taxPercentage);
     const paidAmount = parsePositiveNumber(invoiceForm.paidAmount);
     const calculations = getInvoiceCalculations(
       jobCard.laborCost,
       jobCard.partsCost,
       discount,
-      taxAmount,
+      taxPercentage,
       paidAmount,
     );
 
@@ -2172,7 +2492,8 @@ export default function Home() {
       partsCost: jobCard.partsCost,
       subtotal: calculations.subtotal,
       discount,
-      taxAmount,
+      taxPercentage,
+      taxAmount: calculations.taxAmount,
       grandTotal: calculations.grandTotal,
       paidAmount,
       remainingBalance: calculations.remainingBalance,
@@ -2239,7 +2560,9 @@ export default function Home() {
         settingsDraft.englishSubtitle.trim() || defaultWorkshopSettings.englishSubtitle,
       arabicSubtitle:
         settingsDraft.arabicSubtitle.trim() || defaultWorkshopSettings.arabicSubtitle,
-      phoneNumber: settingsDraft.phoneNumber.trim() || defaultWorkshopSettings.phoneNumber,
+      phoneNumber:
+        normalizeSaudiPhone(settingsDraft.phoneNumber) ||
+        defaultWorkshopSettings.phoneNumber,
     };
 
     setSettings(nextSettings);
@@ -2253,6 +2576,29 @@ export default function Home() {
     setSettingsDraft(defaultWorkshopSettings);
     setLocale(defaultWorkshopSettings.defaultLanguage);
     setSettingsSavedMessage("settings.resetMessage");
+  };
+
+  const resetDemoData = () => {
+    if (isBrowser() && !window.confirm(t("settings.demoReset.confirm"))) {
+      return;
+    }
+
+    const defaultDemoData = getDefaultDemoData();
+
+    safeLocalStorageRemove(demoDataStorageKey);
+    safeLocalStorageRemove(activeSectionStorageKey);
+    setCustomers(defaultDemoData.customers);
+    setVehicles(defaultDemoData.vehicles);
+    setJobCards(defaultDemoData.jobCards);
+    setInventoryItems(defaultDemoData.inventoryItems);
+    setPurchases(defaultDemoData.purchases);
+    setExpenses(defaultDemoData.expenses);
+    setInvoices(defaultDemoData.invoices);
+    setSettings(defaultDemoData.settings);
+    setSettingsDraft(defaultDemoData.settings);
+    setLocale(defaultDemoData.settings.defaultLanguage);
+    setActiveSection("settings");
+    setSettingsSavedMessage("settings.demoReset.success");
   };
 
   const sectionHeaderKeys: Record<SectionKey, { title: string; subtitle: string }> = {
@@ -2271,7 +2617,9 @@ export default function Home() {
   const topbarTitleKey = sectionHeaderKeys[activeSection].title;
   const topbarSubtitleKey = sectionHeaderKeys[activeSection].subtitle;
 
-  return (
+  return !isLanguageReady || !isAppHydrated ? (
+    <LoadingScreen />
+  ) : (
     <main dir={dir} className="min-h-screen bg-slate-100 text-slate-950">
       <div className="app-shell flex min-h-screen">
         <aside className="hidden w-72 shrink-0 border-s border-slate-200 bg-white px-4 py-5 shadow-sm md:flex md:flex-col">
@@ -2283,7 +2631,7 @@ export default function Home() {
               <p className="text-base font-semibold">{settings.workshopName}</p>
               <p className="text-xs text-slate-500">{workshopSubtitle}</p>
               <p className="mt-0.5 text-xs font-medium text-slate-600" dir="ltr">
-                {settings.phoneNumber}
+                {formatPhone(settings.phoneNumber)}
               </p>
             </div>
           </div>
@@ -2321,7 +2669,7 @@ export default function Home() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <div className="hidden text-end text-xs text-slate-500 xl:block">
                   <p className="font-medium text-slate-700">{settings.workshopName}</p>
-                  <p dir="ltr">{settings.phoneNumber}</p>
+                  <p dir="ltr">{formatPhone(settings.phoneNumber)}</p>
                 </div>
 
                 <label className="sr-only" htmlFor="global-search">
@@ -2405,6 +2753,7 @@ export default function Home() {
                 activeTab={customerTab}
                 onTabChange={setCustomerTab}
                 onUpdateForm={setCustomerForm}
+                formatPhone={formatPhone}
                 getCustomerJobs={getCustomerJobs}
                 getCustomerVehicles={getCustomerVehicles}
                 t={t}
@@ -2532,7 +2881,9 @@ export default function Home() {
                   activeTab={invoiceTab}
                   availableJobCards={getCompletedJobCardsForInvoice()}
                   formatDate={formatDate}
+                  formatPhone={formatPhone}
                   formatMoney={formatMoney}
+                  getDefaultPaidAmountFromJobCard={getDefaultInvoicePaidAmountFromJobCard}
                   invoiceForm={invoiceForm}
                   invoiceSearch={invoiceSearch}
                   invoices={filteredInvoices}
@@ -2574,6 +2925,7 @@ export default function Home() {
               />
             ) : activeSection === "settings" ? (
               <SettingsSection
+                onResetDemoData={resetDemoData}
                 onReset={resetSettings}
                 onSave={saveSettings}
                 onUpdateSettings={setSettingsDraft}
@@ -2590,6 +2942,7 @@ export default function Home() {
       {printInvoiceId ? (
         <PrintInvoiceModal
           formatDate={formatDate}
+          formatPhone={formatPhone}
           formatMoney={formatMoney}
           invoice={invoices.find((invoice) => invoice.id === printInvoiceId)}
           onClose={() => setPrintInvoiceId(null)}
@@ -2604,6 +2957,22 @@ export default function Home() {
           </div>
         </div>
       ) : null}
+    </main>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 text-slate-950">
+      <section className="text-center">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-lg bg-emerald-700 text-sm font-bold text-white">
+          DC9
+        </div>
+        <h1 className="mt-4 text-xl font-bold tracking-normal">CAR DC9</h1>
+        <p className="mt-2 text-sm font-medium text-slate-500">
+          Loading workshop system...
+        </p>
+      </section>
     </main>
   );
 }
@@ -2699,6 +3068,7 @@ function CustomersSection({
   customerSearch,
   customers,
   formatDate,
+  formatPhone,
   formatMoney,
   formatNumber,
   isEditing,
@@ -2719,6 +3089,7 @@ function CustomersSection({
   customerSearch: string;
   customers: Customer[];
   formatDate: (value: string) => string;
+  formatPhone: (value: string) => string;
   formatMoney: (value: number) => string;
   formatNumber: (value: number) => string;
   isEditing: boolean;
@@ -2795,7 +3166,12 @@ function CustomersSection({
             const outstandingBalance = customerJobs
               .filter((jobCard) => jobCard.status !== "completed")
               .filter((jobCard) => jobCard.paymentStatus !== "paid")
-              .reduce((total, jobCard) => total + jobCard.laborCost + jobCard.partsCost, 0);
+              .reduce(
+                (total, jobCard) =>
+                  total +
+                  Math.max(0, jobCard.laborCost + jobCard.partsCost - jobCard.paidAmount),
+                0,
+              );
 
             return (
               <article
@@ -2807,7 +3183,7 @@ function CustomersSection({
                     <h3 className="text-lg font-semibold tracking-normal text-slate-950">
                       {customer.name}
                     </h3>
-                    <p className="mt-1 text-sm text-slate-500">{customer.phone}</p>
+                    <p className="mt-1 text-sm text-slate-500" dir="ltr">{formatPhone(customer.phone)}</p>
                   </div>
                   <span
                     className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${
@@ -2890,6 +3266,7 @@ function CustomersSection({
       {isModalOpen ? (
         <CustomerModal
           customerForm={customerForm}
+          formatPhone={formatPhone}
           isEditing={isEditing}
           onClose={onCloseModal}
           onSave={onSave}
@@ -2912,6 +3289,7 @@ function CustomerField({ label, value }: { label: string; value: string }) {
 
 function CustomerModal({
   customerForm,
+  formatPhone,
   isEditing,
   onClose,
   onSave,
@@ -2919,6 +3297,7 @@ function CustomerModal({
   t,
 }: {
   customerForm: CustomerForm;
+  formatPhone: (value: string) => string;
   isEditing: boolean;
   onClose: () => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
@@ -2960,10 +3339,10 @@ function CustomerModal({
               placeholder={t("customers.form.namePlaceholder")}
               required
             />
-            <FormField
+            <PhoneField
               label={t("customers.fields.phone")}
-              value={customerForm.phone}
-              onChange={(value) => onUpdateForm({ ...customerForm, phone: value })}
+              value={formatPhone(customerForm.phone)}
+              onChange={(value) => onUpdateForm({ ...customerForm, phone: normalizeSaudiPhone(value) })}
               placeholder={t("customers.form.phonePlaceholder")}
               required
             />
@@ -3719,6 +4098,14 @@ function JobCardsSection({
                     label={t("jobCards.parts.partsCount")}
                     value={String(jobCard.partsUsed.length)}
                   />
+                  <CustomerField
+                    label={t("jobCards.fields.paidAmount")}
+                    value={formatMoney(jobCard.paidAmount)}
+                  />
+                  <CustomerField
+                    label={t("jobCards.fields.remainingAmount")}
+                    value={formatMoney(Math.max(0, jobCard.laborCost + jobCard.partsCost - jobCard.paidAmount))}
+                  />
                   <div>
                     <p className="text-xs font-medium uppercase text-slate-400">
                       {t("jobCards.fields.totalAmount")}
@@ -3819,6 +4206,16 @@ function JobCardModal({
     0,
   );
   const totalAmount = getFormCost(jobCardForm.laborCost) + partsTotal;
+  const rawPaidAmount = getFormCost(jobCardForm.paidAmount);
+  const paidAmount =
+    jobCardForm.paymentStatus === "paid"
+      ? totalAmount
+      : jobCardForm.paymentStatus === "unpaid"
+        ? 0
+        : rawPaidAmount;
+  const syncedPaymentStatus =
+    paidAmount <= 0 ? "unpaid" : paidAmount >= totalAmount ? "paid" : "partial";
+  const remainingAmount = Math.max(0, totalAmount - paidAmount);
   const selectedInventoryItemIds = jobCardForm.partsUsed
     .map((partLine) => partLine.inventoryItemId)
     .filter(Boolean);
@@ -3858,6 +4255,43 @@ function JobCardModal({
     onUpdateForm({
       ...jobCardForm,
       partsUsed: jobCardForm.partsUsed.filter((partLine) => partLine.rowId !== rowId),
+    });
+  };
+  const updateJobCardPaidAmount = (value: string) => {
+    const nextPaidAmount = Number(value) > 0 ? Number(value) : 0;
+
+    onUpdateForm({
+      ...jobCardForm,
+      paidAmount: value,
+      paymentStatus:
+        nextPaidAmount <= 0
+          ? "unpaid"
+          : nextPaidAmount >= totalAmount
+            ? "paid"
+            : "partial",
+    });
+  };
+  const updateJobCardPaymentStatus = (status: PaymentStatus) => {
+    const nextPaidAmount =
+      status === "paid"
+        ? totalAmount
+        : status === "unpaid"
+          ? 0
+          : paidAmount > 0 && paidAmount < totalAmount
+            ? paidAmount
+            : totalAmount > 0
+              ? totalAmount / 2
+              : 0;
+
+    onUpdateForm({
+      ...jobCardForm,
+      paidAmount: String(nextPaidAmount),
+      paymentStatus:
+        nextPaidAmount <= 0
+          ? "unpaid"
+          : nextPaidAmount >= totalAmount
+            ? "paid"
+            : "partial",
     });
   };
 
@@ -4260,12 +4694,9 @@ function JobCardModal({
                 {t("jobCards.fields.paymentStatus")}
               </span>
               <select
-                value={jobCardForm.paymentStatus}
+                value={syncedPaymentStatus}
                 onChange={(event) =>
-                  onUpdateForm({
-                    ...jobCardForm,
-                    paymentStatus: event.target.value as PaymentStatus,
-                  })
+                  updateJobCardPaymentStatus(event.target.value as PaymentStatus)
                 }
                 className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
               >
@@ -4274,6 +4705,29 @@ function JobCardModal({
                 <option value="paid">{t("jobCards.paymentStatus.paid")}</option>
               </select>
             </label>
+
+            <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-3">
+              <FormField
+                inputType="number"
+                label={t("jobCards.fields.paidAmount")}
+                min="0"
+                value={String(paidAmount)}
+                onChange={updateJobCardPaidAmount}
+                placeholder={t("jobCards.form.paidAmountPlaceholder")}
+              />
+              <CustomerField
+                label={t("jobCards.fields.remainingAmount")}
+                value={formatMoney(remainingAmount)}
+              />
+              <div>
+                <p className="text-xs font-medium uppercase text-slate-400">
+                  {t("jobCards.fields.paymentStatus")}
+                </p>
+                <div className="mt-1">
+                  <PaymentStatusBadge status={syncedPaymentStatus} t={t} />
+                </div>
+              </div>
+            </section>
 
             <label className="block">
               <span className="text-sm font-medium text-slate-700">
@@ -4316,7 +4770,9 @@ function InvoicesSection({
   activeTab,
   availableJobCards,
   formatDate,
+  formatPhone,
   formatMoney,
+  getDefaultPaidAmountFromJobCard,
   invoiceForm,
   invoiceSearch,
   invoices,
@@ -4335,7 +4791,13 @@ function InvoicesSection({
   activeTab: RecordTab;
   availableJobCards: JobCard[];
   formatDate: (value: string) => string;
+  formatPhone: (value: string) => string;
   formatMoney: (value: number) => string;
+  getDefaultPaidAmountFromJobCard: (
+    jobCard: JobCard,
+    discount: number,
+    taxPercentage: number,
+  ) => number;
   invoiceForm: InvoiceForm;
   invoiceSearch: string;
   invoices: Invoice[];
@@ -4407,7 +4869,7 @@ function InvoicesSection({
                 <CustomerField label={t("invoices.fields.grandTotal")} value={formatMoney(invoice.grandTotal)} />
                 <CustomerField label={t("invoices.fields.paidAmount")} value={formatMoney(invoice.paidAmount)} />
                 <CustomerField label={t("invoices.fields.remainingBalance")} value={formatMoney(invoice.remainingBalance)} />
-                <CustomerField label={t("invoices.fields.customerPhone")} value={invoice.customerPhone || t("common.notAvailable")} />
+                <CustomerField label={t("invoices.fields.customerPhone")} value={formatPhone(invoice.customerPhone)} />
               </dl>
               <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
                 <button type="button" onClick={() => onOpenModal(invoice)} className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
@@ -4439,6 +4901,7 @@ function InvoicesSection({
           availableJobCards={availableJobCards}
           formatDate={formatDate}
           formatMoney={formatMoney}
+          getDefaultPaidAmountFromJobCard={getDefaultPaidAmountFromJobCard}
           invoiceForm={invoiceForm}
           isEditing={isEditing}
           onClose={onCloseModal}
@@ -4455,6 +4918,7 @@ function InvoiceModal({
   availableJobCards,
   formatDate,
   formatMoney,
+  getDefaultPaidAmountFromJobCard,
   invoiceForm,
   isEditing,
   onClose,
@@ -4465,6 +4929,11 @@ function InvoiceModal({
   availableJobCards: JobCard[];
   formatDate: (value: string) => string;
   formatMoney: (value: number) => string;
+  getDefaultPaidAmountFromJobCard: (
+    jobCard: JobCard,
+    discount: number,
+    taxPercentage: number,
+  ) => number;
   invoiceForm: InvoiceForm;
   isEditing: boolean;
   onClose: () => void;
@@ -4474,12 +4943,107 @@ function InvoiceModal({
 }) {
   const selectedJobCard = availableJobCards.find((jobCard) => jobCard.id === Number(invoiceForm.jobCardId));
   const discount = Number(invoiceForm.discount) > 0 ? Number(invoiceForm.discount) : 0;
-  const taxAmount = Number(invoiceForm.taxAmount) > 0 ? Number(invoiceForm.taxAmount) : 0;
+  const taxPercentage = Number(invoiceForm.taxPercentage) > 0 ? Number(invoiceForm.taxPercentage) : 0;
   const paidAmount = Number(invoiceForm.paidAmount) > 0 ? Number(invoiceForm.paidAmount) : 0;
   const subtotal = selectedJobCard ? selectedJobCard.laborCost + selectedJobCard.partsCost : 0;
+  const taxAmount = subtotal * (taxPercentage / 100);
   const grandTotal = Math.max(0, subtotal + taxAmount - discount);
   const remainingBalance = Math.max(0, grandTotal - paidAmount);
   const paymentStatus = paidAmount <= 0 ? "unpaid" : paidAmount >= grandTotal ? "paid" : "partial";
+  const getPaidAmountForStatus = (
+    status: PaymentStatus,
+    currentPaidAmount: number,
+    nextGrandTotal: number,
+  ) => {
+    if (status === "paid") {
+      return nextGrandTotal;
+    }
+
+    if (status === "unpaid") {
+      return 0;
+    }
+
+    return Math.min(currentPaidAmount, nextGrandTotal);
+  };
+  const updateInvoiceTotalInput = (
+    nextValues: Partial<Pick<InvoiceForm, "discount" | "taxPercentage">>,
+  ) => {
+    const nextDiscount =
+      Number(nextValues.discount ?? invoiceForm.discount) > 0
+        ? Number(nextValues.discount ?? invoiceForm.discount)
+        : 0;
+    const nextTaxPercentage =
+      Number(nextValues.taxPercentage ?? invoiceForm.taxPercentage) > 0
+        ? Number(nextValues.taxPercentage ?? invoiceForm.taxPercentage)
+        : 0;
+    const nextTaxAmount = subtotal * (nextTaxPercentage / 100);
+    const nextGrandTotal = Math.max(0, subtotal + nextTaxAmount - nextDiscount);
+    const nextPaidAmount = getPaidAmountForStatus(
+      paymentStatus,
+      paidAmount,
+      nextGrandTotal,
+    );
+
+    onUpdateForm({
+      ...invoiceForm,
+      ...nextValues,
+      paidAmount: String(nextPaidAmount),
+      paymentStatus: getPaymentStatusFromAmounts(nextPaidAmount, nextGrandTotal),
+    });
+  };
+  const updateInvoicePaidAmount = (value: string) => {
+    const nextPaidAmount = Number(value) > 0 ? Number(value) : 0;
+
+    onUpdateForm({
+      ...invoiceForm,
+      paidAmount: value,
+      paymentStatus:
+        nextPaidAmount <= 0
+          ? "unpaid"
+          : nextPaidAmount >= grandTotal
+            ? "paid"
+            : "partial",
+    });
+  };
+  const updateInvoicePaymentStatus = (status: PaymentStatus) => {
+    const nextPaidAmount =
+      status === "paid"
+        ? grandTotal
+        : status === "unpaid"
+          ? 0
+          : paidAmount > 0 && paidAmount < grandTotal
+            ? paidAmount
+            : grandTotal > 0
+              ? grandTotal / 2
+              : 0;
+
+    onUpdateForm({
+      ...invoiceForm,
+      paidAmount: String(nextPaidAmount),
+      paymentStatus:
+        nextPaidAmount <= 0
+          ? "unpaid"
+          : nextPaidAmount >= grandTotal
+            ? "paid"
+            : "partial",
+    });
+  };
+  const updateSelectedJobCard = (jobCardId: string) => {
+    const nextJobCard = availableJobCards.find((jobCard) => jobCard.id === Number(jobCardId));
+    const defaultPaidAmount = nextJobCard
+      ? getDefaultPaidAmountFromJobCard(nextJobCard, discount, taxPercentage)
+      : 0;
+    const nextSubtotal = nextJobCard ? nextJobCard.laborCost + nextJobCard.partsCost : 0;
+    const nextTaxAmount = nextSubtotal * (taxPercentage / 100);
+    const nextGrandTotal = Math.max(0, nextSubtotal + nextTaxAmount - discount);
+
+    onUpdateForm({
+      ...invoiceForm,
+      jobCardId,
+      paidAmount: String(defaultPaidAmount),
+      paymentStatus: getPaymentStatusFromAmounts(defaultPaidAmount, nextGrandTotal),
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
@@ -4499,7 +5063,7 @@ function InvoiceModal({
               <span className="text-sm font-medium text-slate-700">{t("invoices.fields.jobCardNumber")}</span>
               <select
                 value={invoiceForm.jobCardId}
-                onChange={(event) => onUpdateForm({ ...invoiceForm, jobCardId: event.target.value })}
+                onChange={(event) => updateSelectedJobCard(event.target.value)}
                 disabled={isEditing}
                 required
                 className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 disabled:bg-slate-100"
@@ -4525,12 +5089,21 @@ function InvoiceModal({
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField inputType="date" label={t("invoices.fields.invoiceDate")} value={invoiceForm.invoiceDate} onChange={(value) => onUpdateForm({ ...invoiceForm, invoiceDate: value })} placeholder={t("invoices.form.invoiceDatePlaceholder")} required />
               <FormField inputType="date" label={t("invoices.fields.dueDate")} value={invoiceForm.dueDate} onChange={(value) => onUpdateForm({ ...invoiceForm, dueDate: value })} placeholder={t("invoices.form.dueDatePlaceholder")} required />
-              <FormField inputType="number" label={t("invoices.fields.discount")} min="0" value={invoiceForm.discount} onChange={(value) => onUpdateForm({ ...invoiceForm, discount: value })} placeholder={t("invoices.form.discountPlaceholder")} />
-              <FormField inputType="number" label={t("invoices.fields.taxAmount")} min="0" value={invoiceForm.taxAmount} onChange={(value) => onUpdateForm({ ...invoiceForm, taxAmount: value })} placeholder={t("invoices.form.taxPlaceholder")} />
-              <FormField inputType="number" label={t("invoices.fields.paidAmount")} min="0" value={invoiceForm.paidAmount} onChange={(value) => onUpdateForm({ ...invoiceForm, paidAmount: value })} placeholder={t("invoices.form.paidPlaceholder")} />
+              <FormField inputType="number" label={t("invoices.fields.discount")} min="0" value={invoiceForm.discount} onChange={(value) => updateInvoiceTotalInput({ discount: value })} placeholder={t("invoices.form.discountPlaceholder")} />
+              <PercentField label={t("invoices.fields.taxPercentage")} value={invoiceForm.taxPercentage} onChange={(value) => updateInvoiceTotalInput({ taxPercentage: value })} placeholder={t("invoices.form.taxPercentagePlaceholder")} />
+              <FormField inputType="number" label={t("invoices.fields.paidAmount")} min="0" value={invoiceForm.paidAmount} onChange={updateInvoicePaidAmount} placeholder={t("invoices.form.paidPlaceholder")} />
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">{t("invoices.fields.paymentStatus")}</span>
+                <select value={paymentStatus} onChange={(event) => updateInvoicePaymentStatus(event.target.value as PaymentStatus)} className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600">
+                  <option value="unpaid">{t("jobCards.paymentStatus.unpaid")}</option>
+                  <option value="partial">{t("jobCards.paymentStatus.partial")}</option>
+                  <option value="paid">{t("jobCards.paymentStatus.paid")}</option>
+                </select>
+              </label>
             </div>
 
             <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-3">
+              <CustomerField label={t("invoices.fields.taxAmount")} value={formatMoney(taxAmount)} />
               <CustomerField label={t("invoices.fields.grandTotal")} value={formatMoney(grandTotal)} />
               <CustomerField label={t("invoices.fields.remainingBalance")} value={formatMoney(remainingBalance)} />
               <div>
@@ -4556,6 +5129,7 @@ function InvoiceModal({
 
 function PrintInvoiceModal({
   formatDate,
+  formatPhone,
   formatMoney,
   invoice,
   onClose,
@@ -4563,6 +5137,7 @@ function PrintInvoiceModal({
   t,
 }: {
   formatDate: (value: string) => string;
+  formatPhone: (value: string) => string;
   formatMoney: (value: number) => string;
   invoice?: Invoice;
   onClose: () => void;
@@ -4591,7 +5166,7 @@ function PrintInvoiceModal({
                 <p className="mt-1 text-base font-semibold text-slate-700" lang="ar" dir="rtl">
                   {settings.arabicSubtitle}
                 </p>
-                <p className="mt-3 text-sm font-bold text-slate-900" dir="ltr">{settings.phoneNumber}</p>
+                <p className="mt-3 text-sm font-bold text-slate-900" dir="ltr">{formatPhone(settings.phoneNumber)}</p>
               </div>
               <div className="invoice-number-card rounded-lg border border-slate-200 bg-slate-50 p-4 text-start sm:min-w-64 sm:text-end">
                 <p className="text-xs font-medium uppercase text-slate-400">{t("invoices.fields.invoiceNumber")}</p>
@@ -4608,7 +5183,7 @@ function PrintInvoiceModal({
                 <h4 className="border-b border-slate-100 pb-2 text-base font-bold text-slate-900">{t("invoices.print.customerDetails")}</h4>
                 <dl className="mt-3 grid gap-2 text-sm">
                   <CustomerField label={t("invoices.fields.customerName")} value={invoice.customerName} />
-                  <CustomerField label={t("invoices.fields.customerPhone")} value={invoice.customerPhone || t("common.notAvailable")} />
+                  <CustomerField label={t("invoices.fields.customerPhone")} value={formatPhone(invoice.customerPhone)} />
                   <CustomerField label={t("invoices.fields.paymentStatus")} value={t(`jobCards.paymentStatus.${invoice.paymentStatus}`)} />
                 </dl>
               </section>
@@ -4671,6 +5246,7 @@ function PrintInvoiceModal({
                 <div className="flex justify-between gap-4"><dt>{t("invoices.fields.laborCost")}</dt><dd className="font-semibold">{formatMoney(invoice.laborCost)}</dd></div>
                 <div className="flex justify-between gap-4"><dt>{t("invoices.fields.partsCost")}</dt><dd className="font-semibold">{formatMoney(invoice.partsCost)}</dd></div>
                 <div className="flex justify-between gap-4"><dt>{t("invoices.fields.discount")}</dt><dd className="font-semibold">{formatMoney(invoice.discount)}</dd></div>
+                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.taxPercentage")}</dt><dd className="font-semibold">{invoice.taxPercentage}%</dd></div>
                 <div className="flex justify-between gap-4"><dt>{t("invoices.fields.taxAmount")}</dt><dd className="font-semibold">{formatMoney(invoice.taxAmount)}</dd></div>
                 <div className="flex justify-between gap-4 border-y border-slate-300 py-3 text-xl font-black text-slate-950"><dt>{t("invoices.fields.grandTotal")}</dt><dd>{formatMoney(invoice.grandTotal)}</dd></div>
                 <div className="flex justify-between gap-4"><dt>{t("invoices.fields.paidAmount")}</dt><dd className="font-semibold">{formatMoney(invoice.paidAmount)}</dd></div>
@@ -4685,6 +5261,7 @@ function PrintInvoiceModal({
 }
 
 function SettingsSection({
+  onResetDemoData,
   onReset,
   onSave,
   onUpdateSettings,
@@ -4692,6 +5269,7 @@ function SettingsSection({
   settings,
   t,
 }: {
+  onResetDemoData: () => void;
   onReset: () => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   onUpdateSettings: (value: WorkshopSettings) => void;
@@ -4733,6 +5311,22 @@ function SettingsSection({
         </div>
       ) : null}
 
+      <section className="mb-6 rounded-lg border border-sky-200 bg-sky-50 p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-sky-900">{t("settings.demoNotice.title")}</p>
+            <p className="mt-1 text-sm leading-6 text-sky-700">{t("settings.demoNotice.body")}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onResetDemoData}
+            className="h-10 rounded-md border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+          >
+            {t("settings.demoReset.button")}
+          </button>
+        </div>
+      </section>
+
       <div className="grid gap-6 xl:grid-cols-2">
         <SettingsCard title={t("settings.profile.title")} subtitle={t("settings.profile.subtitle")}>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -4740,7 +5334,7 @@ function SettingsSection({
             <FormField label={t("settings.fields.logoInitials")} value={settings.logoInitials} onChange={(value) => onUpdateSettings({ ...settings, logoInitials: value })} placeholder={t("settings.placeholders.logoInitials")} required />
             <FormField label={t("settings.fields.englishSubtitle")} value={settings.englishSubtitle} onChange={(value) => onUpdateSettings({ ...settings, englishSubtitle: value })} placeholder={t("settings.placeholders.englishSubtitle")} required />
             <FormField label={t("settings.fields.arabicSubtitle")} value={settings.arabicSubtitle} onChange={(value) => onUpdateSettings({ ...settings, arabicSubtitle: value })} placeholder={t("settings.placeholders.arabicSubtitle")} required />
-            <FormField label={t("settings.fields.phoneNumber")} value={settings.phoneNumber} onChange={(value) => onUpdateSettings({ ...settings, phoneNumber: value })} placeholder={t("settings.placeholders.phoneNumber")} required />
+            <PhoneField label={t("settings.fields.phoneNumber")} value={formatSaudiPhone(settings.phoneNumber)} onChange={(value) => onUpdateSettings({ ...settings, phoneNumber: normalizeSaudiPhone(value) })} placeholder={t("settings.placeholders.phoneNumber")} required />
             <FormField label={t("settings.fields.city")} value={settings.city} onChange={(value) => onUpdateSettings({ ...settings, city: value })} placeholder={t("settings.placeholders.city")} />
             <FormField label={t("settings.fields.country")} value={settings.country} onChange={(value) => onUpdateSettings({ ...settings, country: value })} placeholder={t("settings.placeholders.country")} />
             <FormField label={t("settings.fields.address")} value={settings.address} onChange={(value) => onUpdateSettings({ ...settings, address: value })} placeholder={t("settings.placeholders.address")} />
@@ -6503,6 +7097,69 @@ function FormField({
         required={required}
         className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
       />
+    </label>
+  );
+}
+
+function PhoneField({
+  label,
+  onChange,
+  placeholder,
+  required,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  required?: boolean;
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <input
+        type="tel"
+        inputMode="tel"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        required={required}
+        pattern="^\+966\s5\d\s\d{3}\s\d{4}$"
+        aria-invalid={Boolean(value) && !isValidSaudiMobilePhone(value)}
+        dir="ltr"
+        className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+      />
+    </label>
+  );
+}
+
+function PercentField({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <div className="mt-1 flex h-11 overflow-hidden rounded-md border border-slate-200 bg-white transition focus-within:border-emerald-600">
+        <input
+          type="number"
+          min="0"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm outline-none placeholder:text-slate-400"
+        />
+        <span className="flex w-12 shrink-0 items-center justify-center border-s border-slate-200 bg-slate-50 text-sm font-bold text-slate-600">
+          %
+        </span>
+      </div>
     </label>
   );
 }

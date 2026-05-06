@@ -6,6 +6,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import arMessages from "@/messages/ar.json";
@@ -27,6 +28,7 @@ const localeDirections: Record<Locale, "rtl" | "ltr"> = {
 type LanguageContextValue = {
   locale: Locale;
   dir: "rtl" | "ltr";
+  isLanguageReady: boolean;
   setLocale: (locale: Locale) => void;
   t: (key: string) => string;
 };
@@ -43,8 +45,36 @@ function getMessage(messages: Messages, key: string) {
   }, messages);
 }
 
+const demoDataStorageKey = "car-dc9-demo-data-v1";
+
+function getStoredLocale() {
+  if (typeof window === "undefined") {
+    return "ar";
+  }
+
+  try {
+    const storedData = JSON.parse(
+      window.localStorage.getItem(demoDataStorageKey) ?? "{}",
+    ) as { settings?: { defaultLanguage?: Locale } };
+    const storedLocale = storedData.settings?.defaultLanguage;
+
+    return storedLocale === "en" || storedLocale === "ar" ? storedLocale : "ar";
+  } catch {
+    return "ar";
+  }
+}
+
+const subscribeToHydration = () => () => {};
+const getHydratedSnapshot = () => true;
+const getServerHydrationSnapshot = () => false;
+
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>("ar");
+  const [locale, setLocaleState] = useState<Locale>(getStoredLocale);
+  const isLanguageReady = useSyncExternalStore(
+    subscribeToHydration,
+    getHydratedSnapshot,
+    getServerHydrationSnapshot,
+  );
 
   const dir = localeDirections[locale];
 
@@ -57,13 +87,14 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     return {
       locale,
       dir,
+      isLanguageReady,
       setLocale: setLocaleState,
       t: (key) => {
         const message = getMessage(dictionaries[locale], key);
         return typeof message === "string" ? message : key;
       },
     };
-  }, [dir, locale]);
+  }, [dir, isLanguageReady, locale]);
 
   return (
     <LanguageContext.Provider value={value}>

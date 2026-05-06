@@ -425,6 +425,15 @@
     "kicker": "إعدادات الورشة",
     "savedMessage": "تم حفظ الإعدادات لهذه الجلسة.",
     "resetMessage": "تمت إعادة الإعدادات إلى القيم الافتراضية.",
+    "demoNotice": {
+      "title": "وضع العرض التجريبي: يتم حفظ البيانات في هذا المتصفح فقط.",
+      "body": "يستمر حفظ العملاء والأعمال والفواتير والتقارير والإعدادات بعد تحديث الصفحة على هذا الجهاز."
+    },
+    "demoReset": {
+      "button": "إعادة بيانات العرض",
+      "confirm": "هل تريد إعادة كل بيانات العرض في هذا المتصفح واستعادة سجلات CAR DC9 الافتراضية؟",
+      "success": "تمت إعادة بيانات العرض إلى السجلات الافتراضية."
+    },
     "actions": {
       "save": "حفظ الإعدادات",
       "reset": "إعادة الافتراضي"
@@ -523,7 +532,8 @@
       "partsCost": "تكلفة القطع",
       "subtotal": "الإجمالي الفرعي",
       "discount": "الخصم",
-      "taxAmount": "ضريبة القيمة المضافة",
+      "taxPercentage": "نسبة ضريبة القيمة المضافة",
+      "taxAmount": "مبلغ ضريبة القيمة المضافة",
       "grandTotal": "الإجمالي النهائي",
       "paidAmount": "المبلغ المدفوع",
       "remainingBalance": "الرصيد المتبقي",
@@ -539,7 +549,7 @@
       "invoiceDatePlaceholder": "اختر تاريخ الفاتورة",
       "dueDatePlaceholder": "اختر تاريخ الاستحقاق",
       "discountPlaceholder": "أدخل الخصم",
-      "taxPlaceholder": "أدخل الضريبة",
+      "taxPercentagePlaceholder": "أدخل نسبة الضريبة",
       "paidPlaceholder": "أدخل المبلغ المدفوع",
       "notesPlaceholder": "أضف ملاحظات اختيارية",
       "save": "حفظ الفاتورة",
@@ -577,6 +587,8 @@
       "laborCost": "تكلفة اليد العاملة",
       "partsCost": "تكلفة القطع",
       "totalAmount": "الإجمالي",
+      "paidAmount": "المبلغ المدفوع",
+      "remainingAmount": "المبلغ المتبقي",
       "paymentStatus": "حالة الدفع",
       "notes": "ملاحظات"
     },
@@ -622,6 +634,7 @@
       "mechanicPlaceholder": "أدخل اسم الفني",
       "laborCostPlaceholder": "أدخل تكلفة اليد العاملة",
       "partsCostPlaceholder": "أدخل تكلفة القطع",
+      "paidAmountPlaceholder": "أدخل المبلغ المدفوع",
       "notesPlaceholder": "أضف ملاحظات اختيارية",
       "save": "حفظ",
       "cancel": "إلغاء"

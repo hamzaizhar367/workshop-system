@@ -425,6 +425,15 @@
     "kicker": "Workshop configuration",
     "savedMessage": "Settings saved for this session.",
     "resetMessage": "Settings reset to defaults.",
+    "demoNotice": {
+      "title": "Demo mode: data is saved in this browser only.",
+      "body": "Customers, jobs, invoices, reports, and settings persist after refresh on this device."
+    },
+    "demoReset": {
+      "button": "Reset demo data",
+      "confirm": "Reset all demo data in this browser and restore the default CAR DC9 records?",
+      "success": "Demo data reset to default records."
+    },
     "actions": {
       "save": "Save Settings",
       "reset": "Reset to Default"
@@ -523,6 +532,7 @@
       "partsCost": "Parts cost",
       "subtotal": "Subtotal",
       "discount": "Discount",
+      "taxPercentage": "VAT/tax percentage",
       "taxAmount": "VAT/tax amount",
       "grandTotal": "Grand total",
       "paidAmount": "Paid amount",
@@ -539,7 +549,7 @@
       "invoiceDatePlaceholder": "Select invoice date",
       "dueDatePlaceholder": "Select due date",
       "discountPlaceholder": "Enter discount",
-      "taxPlaceholder": "Enter VAT/tax amount",
+      "taxPercentagePlaceholder": "Enter VAT/tax percentage",
       "paidPlaceholder": "Enter paid amount",
       "notesPlaceholder": "Add optional notes",
       "save": "Save Invoice",
@@ -577,6 +587,8 @@
       "laborCost": "Labor cost",
       "partsCost": "Parts cost",
       "totalAmount": "Total amount",
+      "paidAmount": "Paid amount",
+      "remainingAmount": "Remaining amount",
       "paymentStatus": "Payment status",
       "notes": "Notes"
     },
@@ -622,6 +634,7 @@
       "mechanicPlaceholder": "Enter mechanic name",
       "laborCostPlaceholder": "Enter labor cost",
       "partsCostPlaceholder": "Enter parts cost",
+      "paidAmountPlaceholder": "Enter paid amount",
       "notesPlaceholder": "Add optional notes",
       "save": "Save",
       "cancel": "Cancel"
