@@ -356,6 +356,69 @@
       "cancel": "Cancel"
     }
   },
+  "reports": {
+    "title": "Reports",
+    "subtitle": "Business performance from revenue, costs, stock, and workshop activity",
+    "kicker": "Business reports",
+    "empty": "No records found for this period.",
+    "filters": {
+      "today": "Today",
+      "week": "This Week",
+      "month": "This Month",
+      "all": "All Time"
+    },
+    "summary": {
+      "completedWorkValue": "Completed work value",
+      "uninvoicedCompletedWork": "Uninvoiced completed work",
+      "totalRevenue": "Total revenue",
+      "paidRevenue": "Paid revenue",
+      "outstandingBalance": "Outstanding balance",
+      "totalExpenses": "Total expenses",
+      "purchaseCosts": "Purchase costs",
+      "estimatedNetProfit": "Estimated net profit",
+      "completedJobs": "Completed jobs",
+      "lowStockItems": "Low stock items"
+    },
+    "revenue": {
+      "title": "Revenue overview",
+      "subtitle": "Work completed, invoices issued, and payments received are separated clearly",
+      "completedWork": "Work completed",
+      "invoicesIssued": "Invoices issued",
+      "paymentsReceived": "Payments received"
+    },
+    "expenses": {
+      "title": "Expense breakdown by category",
+      "subtitle": "Operating costs grouped by workshop category"
+    },
+    "purchases": {
+      "title": "Purchase summary",
+      "subtitle": "Inventory purchase cost for the selected period"
+    },
+    "lowStock": {
+      "title": "Low stock report",
+      "subtitle": "Inventory items at or below minimum alert level",
+      "empty": "No low stock items right now."
+    },
+    "invoices": {
+      "title": "Unpaid / partial invoices",
+      "subtitle": "Invoices that still have outstanding balance",
+      "empty": "No unpaid or partial invoices for this period."
+    },
+    "jobs": {
+      "title": "Recent completed jobs",
+      "subtitle": "Completed workshop activity in the selected period",
+      "empty": "No completed jobs for this period."
+    },
+    "uninvoicedJobs": {
+      "title": "Uninvoiced Completed Jobs",
+      "subtitle": "Completed jobs that do not yet have an invoice linked",
+      "createInvoice": "Create Invoice",
+      "empty": "All completed jobs in this period are invoiced."
+    },
+    "badges": {
+      "lowStock": "Low Stock"
+    }
+  },
   "invoices": {
     "title": "Invoices",
     "subtitle": "Create invoices from completed job cards",

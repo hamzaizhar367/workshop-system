@@ -53,6 +53,7 @@ type ExpenseCategory =
   | "fuel"
   | "miscellaneous";
 type ExpensePaymentMethod = "cash" | "card" | "bankTransfer";
+type ReportRange = "today" | "week" | "month" | "all";
 
 type JobPart = {
   id: number;
@@ -319,6 +320,8 @@ const expensePaymentMethods: ExpensePaymentMethod[] = [
   "card",
   "bankTransfer",
 ];
+
+const reportRanges: ReportRange[] = ["today", "week", "month", "all"];
 
 const initialCustomers: Customer[] = [
   {
@@ -921,6 +924,7 @@ export default function Home() {
   const [invoiceForm, setInvoiceForm] = useState<InvoiceForm>(emptyInvoiceForm);
   const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null);
   const [printInvoiceId, setPrintInvoiceId] = useState<number | null>(null);
+  const [reportRange, setReportRange] = useState<ReportRange>("month");
   const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
 
   const isArabic = locale === "ar";
@@ -1058,6 +1062,26 @@ export default function Home() {
   const weekEndDate = new Date(weekStartDate);
   weekEndDate.setDate(weekStartDate.getDate() + 6);
   weekEndDate.setHours(23, 59, 59, 999);
+  const isDateInReportRange = (value: string, range: ReportRange) => {
+    const recordDate = new Date(value);
+
+    if (range === "all") {
+      return true;
+    }
+
+    if (range === "today") {
+      return recordDate.toDateString() === currentDate.toDateString();
+    }
+
+    if (range === "week") {
+      return recordDate >= weekStartDate && recordDate <= weekEndDate;
+    }
+
+    return (
+      recordDate.getMonth() === currentDate.getMonth() &&
+      recordDate.getFullYear() === currentDate.getFullYear()
+    );
+  };
 
   const monthlyExpenseTotal = activeExpenses.reduce(
     (total, expense) => {
@@ -1088,6 +1112,69 @@ export default function Home() {
       .filter((expense) => expense.category === category)
       .reduce((total, expense) => total + expense.amount, 0),
   }));
+  const reportInvoices = invoices.filter(
+    (invoice) => !invoice.archived && isDateInReportRange(invoice.invoiceDate, reportRange),
+  );
+  const reportExpenses = activeExpenses.filter((expense) =>
+    isDateInReportRange(expense.date, reportRange),
+  );
+  const reportPurchases = purchases.filter((purchase) =>
+    isDateInReportRange(purchase.purchaseDate, reportRange),
+  );
+  const reportCompletedJobs = jobCards.filter(
+    (jobCard) =>
+      !jobCard.archived &&
+      jobCard.status === "completed" &&
+      isDateInReportRange(jobCard.date, reportRange),
+  );
+  const activeInvoiceJobCardIds = new Set(
+    invoices.filter((invoice) => !invoice.archived).map((invoice) => invoice.jobCardId),
+  );
+  const reportCompletedWorkValue = reportCompletedJobs.reduce(
+    (total, jobCard) => total + jobCard.laborCost + jobCard.partsCost,
+    0,
+  );
+  const reportUninvoicedCompletedJobs = reportCompletedJobs.filter(
+    (jobCard) => !activeInvoiceJobCardIds.has(jobCard.id),
+  );
+  const reportUninvoicedCompletedWorkValue = reportUninvoicedCompletedJobs.reduce(
+    (total, jobCard) => total + jobCard.laborCost + jobCard.partsCost,
+    0,
+  );
+  const reportLowStockItems = inventoryItems.filter(
+    (item) => !item.archived && item.stockQuantity <= item.minimumStock,
+  );
+  const reportExpenseCategoryTotals = expenseCategories.map((category) => ({
+    category,
+    total: reportExpenses
+      .filter((expense) => expense.category === category)
+      .reduce((total, expense) => total + expense.amount, 0),
+  }));
+  const reportTotalRevenue = reportInvoices.reduce(
+    (total, invoice) => total + invoice.grandTotal,
+    0,
+  );
+  const reportPaidRevenue = reportInvoices.reduce(
+    (total, invoice) => total + invoice.paidAmount,
+    0,
+  );
+  const reportOutstandingBalance = reportInvoices.reduce(
+    (total, invoice) => total + invoice.remainingBalance,
+    0,
+  );
+  const reportTotalExpenses = reportExpenses.reduce(
+    (total, expense) => total + expense.amount,
+    0,
+  );
+  const reportPurchaseCosts = reportPurchases.reduce(
+    (total, purchase) => total + purchase.totalAmount,
+    0,
+  );
+  const reportEstimatedNetProfit =
+    reportPaidRevenue - reportTotalExpenses - reportPurchaseCosts;
+  const reportUnpaidInvoices = reportInvoices.filter(
+    (invoice) => invoice.paymentStatus !== "paid" || invoice.remainingBalance > 0,
+  );
 
   const getVehicleJobs = (vehicleId: number) => {
     return jobCards.filter((jobCard) => jobCard.vehicleId === vehicleId);
@@ -2070,7 +2157,7 @@ export default function Home() {
     purchases: { title: "purchases.title", subtitle: "purchases.subtitle" },
     expenses: { title: "expenses.title", subtitle: "expenses.subtitle" },
     invoices: { title: "invoices.title", subtitle: "invoices.subtitle" },
-    reports: { title: "topbar.title", subtitle: "topbar.subtitle" },
+    reports: { title: "reports.title", subtitle: "reports.subtitle" },
     settings: { title: "topbar.title", subtitle: "topbar.subtitle" },
   };
 
@@ -2355,6 +2442,29 @@ export default function Home() {
                   t={t}
                 />
               </>
+            ) : activeSection === "reports" ? (
+              <ReportsSection
+                completedJobs={reportCompletedJobs}
+                completedWorkValue={reportCompletedWorkValue}
+                estimatedNetProfit={reportEstimatedNetProfit}
+                expenseCategoryTotals={reportExpenseCategoryTotals}
+                filterRange={reportRange}
+                formatDate={formatDate}
+                formatMoney={formatMoney}
+                formatNumber={formatNumber}
+                lowStockItems={reportLowStockItems}
+                onFilterChange={setReportRange}
+                outstandingBalance={reportOutstandingBalance}
+                paidRevenue={reportPaidRevenue}
+                purchaseCosts={reportPurchaseCosts}
+                purchases={reportPurchases}
+                t={t}
+                totalExpenses={reportTotalExpenses}
+                totalRevenue={reportTotalRevenue}
+                unpaidInvoices={reportUnpaidInvoices}
+                uninvoicedCompletedJobs={reportUninvoicedCompletedJobs}
+                uninvoicedCompletedWorkValue={reportUninvoicedCompletedWorkValue}
+              />
             ) : (
               <DashboardSection formatCardValue={formatCardValue} t={t} />
             )}
@@ -4448,6 +4558,283 @@ function PrintInvoiceModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function ReportsSection({
+  completedJobs,
+  completedWorkValue,
+  estimatedNetProfit,
+  expenseCategoryTotals,
+  filterRange,
+  formatDate,
+  formatMoney,
+  formatNumber,
+  lowStockItems,
+  onFilterChange,
+  outstandingBalance,
+  paidRevenue,
+  purchaseCosts,
+  purchases,
+  t,
+  totalExpenses,
+  totalRevenue,
+  unpaidInvoices,
+  uninvoicedCompletedJobs,
+  uninvoicedCompletedWorkValue,
+}: {
+  completedJobs: JobCard[];
+  completedWorkValue: number;
+  estimatedNetProfit: number;
+  expenseCategoryTotals: Array<{ category: ExpenseCategory; total: number }>;
+  filterRange: ReportRange;
+  formatDate: (value: string) => string;
+  formatMoney: (value: number) => string;
+  formatNumber: (value: number) => string;
+  lowStockItems: InventoryItem[];
+  onFilterChange: (value: ReportRange) => void;
+  outstandingBalance: number;
+  paidRevenue: number;
+  purchaseCosts: number;
+  purchases: Purchase[];
+  t: (key: string) => string;
+  totalExpenses: number;
+  totalRevenue: number;
+  unpaidInvoices: Invoice[];
+  uninvoicedCompletedJobs: JobCard[];
+  uninvoicedCompletedWorkValue: number;
+}) {
+  const summaryCards = [
+    { key: "completedWorkValue", value: formatMoney(completedWorkValue), tone: "text-slate-950" },
+    { key: "uninvoicedCompletedWork", value: formatMoney(uninvoicedCompletedWorkValue), tone: "text-amber-700" },
+    { key: "totalRevenue", value: formatMoney(totalRevenue), tone: "text-emerald-700" },
+    { key: "paidRevenue", value: formatMoney(paidRevenue), tone: "text-emerald-700" },
+    { key: "outstandingBalance", value: formatMoney(outstandingBalance), tone: "text-amber-700" },
+    { key: "totalExpenses", value: formatMoney(totalExpenses), tone: "text-rose-700" },
+    { key: "purchaseCosts", value: formatMoney(purchaseCosts), tone: "text-slate-950" },
+    { key: "estimatedNetProfit", value: formatMoney(estimatedNetProfit), tone: estimatedNetProfit >= 0 ? "text-emerald-700" : "text-rose-700" },
+    { key: "completedJobs", value: formatNumber(completedJobs.length), tone: "text-slate-950" },
+    { key: "lowStockItems", value: formatNumber(lowStockItems.length), tone: "text-rose-700" },
+  ];
+  const recentCompletedJobs = completedJobs
+    .toSorted((firstJob, secondJob) => secondJob.date.localeCompare(firstJob.date))
+    .slice(0, 5);
+  const recentPurchases = purchases
+    .toSorted((firstPurchase, secondPurchase) =>
+      secondPurchase.purchaseDate.localeCompare(firstPurchase.purchaseDate),
+    )
+    .slice(0, 4);
+
+  return (
+    <>
+      <section className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <p className="text-sm font-medium text-emerald-700">{t("reports.kicker")}</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-normal">{t("reports.title")}</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{t("reports.subtitle")}</p>
+        </div>
+
+        <div className="grid h-auto grid-cols-2 gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 shadow-sm sm:flex sm:h-11">
+          {reportRanges.map((range) => (
+            <button
+              key={range}
+              type="button"
+              onClick={() => onFilterChange(range)}
+              className={`rounded px-4 py-2 text-sm font-semibold transition sm:py-0 ${
+                filterRange === range
+                  ? "bg-white text-emerald-800 shadow-sm"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+              aria-pressed={filterRange === range}
+            >
+              {t(`reports.filters.${range}`)}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {summaryCards.map((card) => (
+          <article key={card.key} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-medium text-slate-500">{t(`reports.summary.${card.key}`)}</p>
+            <p className={`mt-2 text-2xl font-black tracking-normal ${card.tone}`}>{card.value}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="mb-6 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-lg font-semibold tracking-normal text-slate-950">{t("reports.revenue.title")}</h3>
+          <p className="mt-1 text-sm text-slate-500">{t("reports.revenue.subtitle")}</p>
+          <dl className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <CustomerField label={t("reports.revenue.completedWork")} value={formatMoney(completedWorkValue)} />
+            <CustomerField label={t("reports.revenue.invoicesIssued")} value={formatMoney(totalRevenue)} />
+            <CustomerField label={t("reports.revenue.paymentsReceived")} value={formatMoney(paidRevenue)} />
+            <CustomerField label={t("reports.summary.outstandingBalance")} value={formatMoney(outstandingBalance)} />
+            <CustomerField label={t("reports.summary.uninvoicedCompletedWork")} value={formatMoney(uninvoicedCompletedWorkValue)} />
+          </dl>
+        </article>
+
+        <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-lg font-semibold tracking-normal text-slate-950">{t("reports.expenses.title")}</h3>
+          <p className="mt-1 text-sm text-slate-500">{t("reports.expenses.subtitle")}</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {expenseCategoryTotals.map((categoryTotal) => (
+              <div key={categoryTotal.category} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-bold uppercase text-slate-500">
+                  {t(`expenses.category.${categoryTotal.category}`)}
+                </p>
+                <p className="mt-2 text-base font-black text-slate-950">
+                  {formatMoney(categoryTotal.total)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </article>
+      </section>
+
+      <section className="mb-6 grid gap-4 xl:grid-cols-2">
+        <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold tracking-normal text-slate-950">{t("reports.purchases.title")}</h3>
+              <p className="mt-1 text-sm text-slate-500">{t("reports.purchases.subtitle")}</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+              {formatMoney(purchaseCosts)}
+            </span>
+          </div>
+          <div className="mt-5 grid gap-3">
+            {recentPurchases.length > 0 ? recentPurchases.map((purchase) => (
+              <div key={purchase.id} className="rounded-lg border border-slate-200 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-semibold text-slate-950">{purchase.purchaseId}</p>
+                    <p className="mt-1 text-sm text-slate-500">{purchase.supplierName} - {formatDate(purchase.purchaseDate)}</p>
+                  </div>
+                  <p className="text-sm font-black text-slate-950">{formatMoney(purchase.totalAmount)}</p>
+                </div>
+              </div>
+            )) : (
+              <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">{t("reports.empty")}</p>
+            )}
+          </div>
+        </article>
+
+        <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-lg font-semibold tracking-normal text-slate-950">{t("reports.lowStock.title")}</h3>
+          <p className="mt-1 text-sm text-slate-500">{t("reports.lowStock.subtitle")}</p>
+          <div className="mt-5 grid gap-3">
+            {lowStockItems.length > 0 ? lowStockItems.slice(0, 5).map((item) => (
+              <div key={item.id} className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-semibold text-slate-950">{item.itemName}</p>
+                    <p className="mt-1 text-sm text-slate-500">{item.sku} - {item.location}</p>
+                  </div>
+                  <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">
+                    {t("reports.badges.lowStock")}
+                  </span>
+                </div>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <CustomerField label={t("inventory.fields.stockQuantity")} value={formatNumber(item.stockQuantity)} />
+                  <CustomerField label={t("inventory.fields.minimumStock")} value={formatNumber(item.minimumStock)} />
+                </dl>
+              </div>
+            )) : (
+              <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">{t("reports.lowStock.empty")}</p>
+            )}
+          </div>
+        </article>
+      </section>
+
+      <section className="mb-6 grid gap-4 xl:grid-cols-2">
+        <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-lg font-semibold tracking-normal text-slate-950">{t("reports.invoices.title")}</h3>
+          <p className="mt-1 text-sm text-slate-500">{t("reports.invoices.subtitle")}</p>
+          <div className="mt-5 grid gap-3">
+            {unpaidInvoices.length > 0 ? unpaidInvoices.slice(0, 5).map((invoice) => (
+              <div key={invoice.id} className="rounded-lg border border-slate-200 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-semibold text-slate-950">{invoice.invoiceNumber}</p>
+                    <p className="mt-1 text-sm text-slate-500">{invoice.customerName} - {formatDate(invoice.invoiceDate)}</p>
+                  </div>
+                  <PaymentStatusBadge status={invoice.paymentStatus} t={t} />
+                </div>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <CustomerField label={t("invoices.fields.grandTotal")} value={formatMoney(invoice.grandTotal)} />
+                  <CustomerField label={t("invoices.fields.remainingBalance")} value={formatMoney(invoice.remainingBalance)} />
+                </dl>
+              </div>
+            )) : (
+              <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">{t("reports.invoices.empty")}</p>
+            )}
+          </div>
+        </article>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold tracking-normal text-slate-950">{t("reports.uninvoicedJobs.title")}</h3>
+              <p className="mt-1 text-sm text-slate-500">{t("reports.uninvoicedJobs.subtitle")}</p>
+            </div>
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+              {formatMoney(uninvoicedCompletedWorkValue)}
+            </span>
+          </div>
+          <div className="mt-5 grid gap-3">
+            {uninvoicedCompletedJobs.length > 0 ? uninvoicedCompletedJobs.slice(0, 5).map((jobCard) => (
+              <div key={jobCard.id} className="rounded-lg border border-amber-100 bg-amber-50/30 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-semibold text-slate-950">{jobCard.jobNumber}</p>
+                    <p className="mt-1 text-sm text-slate-500">{jobCard.customerName} - {jobCard.vehicleLabel}</p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-amber-700 ring-1 ring-amber-200">
+                    {t("reports.uninvoicedJobs.createInvoice")}
+                  </span>
+                </div>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <CustomerField label={t("jobCards.fields.date")} value={formatDate(jobCard.date)} />
+                  <CustomerField label={t("jobCards.fields.totalAmount")} value={formatMoney(jobCard.laborCost + jobCard.partsCost)} />
+                </dl>
+              </div>
+            )) : (
+              <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">{t("reports.uninvoicedJobs.empty")}</p>
+            )}
+          </div>
+        </article>
+
+        <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-lg font-semibold tracking-normal text-slate-950">{t("reports.jobs.title")}</h3>
+          <p className="mt-1 text-sm text-slate-500">{t("reports.jobs.subtitle")}</p>
+          <div className="mt-5 grid gap-3">
+            {recentCompletedJobs.length > 0 ? recentCompletedJobs.map((jobCard) => (
+              <div key={jobCard.id} className="rounded-lg border border-slate-200 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-semibold text-slate-950">{jobCard.jobNumber}</p>
+                    <p className="mt-1 text-sm text-slate-500">{jobCard.customerName} - {jobCard.vehicleLabel}</p>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                    {t("jobCards.status.completed")}
+                  </span>
+                </div>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <CustomerField label={t("jobCards.fields.date")} value={formatDate(jobCard.date)} />
+                  <CustomerField label={t("jobCards.fields.totalAmount")} value={formatMoney(jobCard.laborCost + jobCard.partsCost)} />
+                </dl>
+              </div>
+            )) : (
+              <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">{t("reports.jobs.empty")}</p>
+            )}
+          </div>
+        </article>
+      </section>
+    </>
   );
 }
 
