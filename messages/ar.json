@@ -27,7 +27,8 @@
     "recordRestored": "تمت استعادة السجل",
     "activeJobExists": "هذه المركبة لديها أمر عمل نشط بالفعل",
     "insufficientStock": "المخزون غير كاف للقطع المحددة",
-    "duplicateParts": "أزل القطع المكررة قبل الحفظ"
+    "duplicateParts": "أزل القطع المكررة قبل الحفظ",
+    "purchaseItemsRequired": "أضف صنف شراء واحد على الأقل"
   },
   "nav": {
     "dashboard": "لوحة التحكم",
@@ -244,6 +245,59 @@
       "locationPlaceholder": "أدخل الموقع أو الرف",
       "notesPlaceholder": "أضف ملاحظات اختيارية",
       "save": "حفظ",
+      "cancel": "إلغاء"
+    }
+  },
+  "purchases": {
+    "title": "المشتريات",
+    "subtitle": "متابعة مشتريات الموردين وإضافة المخزون المستلم",
+    "addButton": "إضافة عملية شراء",
+    "recordCount": "{count} سجل مشتريات",
+    "viewDetails": "عرض التفاصيل",
+    "hideDetails": "إخفاء التفاصيل",
+    "emptyTitle": "لا توجد مشتريات",
+    "emptyBody": "أنشئ سجل شراء لاستلام مخزون جديد.",
+    "fields": {
+      "purchaseId": "رقم الشراء",
+      "supplierName": "اسم المورد",
+      "purchaseDate": "تاريخ الشراء",
+      "itemsPurchased": "الأصناف المشتراة",
+      "itemsCount": "عدد الأصناف",
+      "totalQuantity": "إجمالي الكمية",
+      "totalAmount": "إجمالي المبلغ",
+      "paymentStatus": "حالة الدفع",
+      "notes": "ملاحظات",
+      "createdBy": "أنشأه"
+    },
+    "items": {
+      "title": "الأصناف المشتراة",
+      "subtitle": "أضف أصناف المخزون المستلمة من المورد.",
+      "addItem": "إضافة صنف",
+      "inventoryItem": "صنف المخزون",
+      "selectItem": "اختر الصنف",
+      "currentStock": "المخزون الحالي",
+      "quantity": "الكمية المشتراة",
+      "quantityPlaceholder": "أدخل الكمية",
+      "costPrice": "سعر التكلفة",
+      "costPlaceholder": "أدخل سعر التكلفة",
+      "lineTotal": "إجمالي السطر",
+      "actions": "الإجراء",
+      "empty": "لم تتم إضافة أصناف شراء بعد",
+      "duplicateWarning": "تمت إضافة هذا الصنف بالفعل"
+    },
+    "summary": {
+      "totalItems": "إجمالي الأصناف",
+      "totalQuantity": "إجمالي الكمية",
+      "totalAmount": "إجمالي مبلغ الشراء"
+    },
+    "form": {
+      "title": "إضافة عملية شراء",
+      "subtitle": "سجل أصناف المورد وزد مخزون الورشة.",
+      "close": "إغلاق",
+      "supplierPlaceholder": "أدخل اسم المورد",
+      "datePlaceholder": "اختر تاريخ الشراء",
+      "notesPlaceholder": "أضف ملاحظات اختيارية",
+      "save": "حفظ الشراء",
       "cancel": "إلغاء"
     }
   },

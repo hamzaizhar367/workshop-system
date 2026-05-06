@@ -27,7 +27,8 @@
     "recordRestored": "Record restored",
     "activeJobExists": "This vehicle already has an active job",
     "insufficientStock": "Insufficient stock for selected parts",
-    "duplicateParts": "Remove duplicate parts before saving"
+    "duplicateParts": "Remove duplicate parts before saving",
+    "purchaseItemsRequired": "Add at least one purchased item"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -244,6 +245,59 @@
       "locationPlaceholder": "Enter location or shelf",
       "notesPlaceholder": "Add optional notes",
       "save": "Save",
+      "cancel": "Cancel"
+    }
+  },
+  "purchases": {
+    "title": "Purchases",
+    "subtitle": "Track supplier purchases and add received stock to inventory",
+    "addButton": "Add Purchase",
+    "recordCount": "{count} purchase records",
+    "viewDetails": "Expand/View",
+    "hideDetails": "Hide details",
+    "emptyTitle": "No purchases found",
+    "emptyBody": "Create a purchase record to receive inventory stock.",
+    "fields": {
+      "purchaseId": "Purchase ID",
+      "supplierName": "Supplier name",
+      "purchaseDate": "Purchase date",
+      "itemsPurchased": "Items purchased",
+      "itemsCount": "Items count",
+      "totalQuantity": "Total quantity",
+      "totalAmount": "Total amount",
+      "paymentStatus": "Payment status",
+      "notes": "Notes",
+      "createdBy": "Created by"
+    },
+    "items": {
+      "title": "Purchased Items",
+      "subtitle": "Add inventory items received from the supplier.",
+      "addItem": "Add Item",
+      "inventoryItem": "Inventory item",
+      "selectItem": "Select item",
+      "currentStock": "Current stock",
+      "quantity": "Quantity purchased",
+      "quantityPlaceholder": "Enter quantity",
+      "costPrice": "Cost price",
+      "costPlaceholder": "Enter cost price",
+      "lineTotal": "Line total",
+      "actions": "Action",
+      "empty": "No purchased items added yet",
+      "duplicateWarning": "This item is already added"
+    },
+    "summary": {
+      "totalItems": "Total items",
+      "totalQuantity": "Total quantity",
+      "totalAmount": "Total purchase amount"
+    },
+    "form": {
+      "title": "Add Purchase",
+      "subtitle": "Record supplier items and increase inventory stock.",
+      "close": "Close",
+      "supplierPlaceholder": "Enter supplier name",
+      "datePlaceholder": "Select purchase date",
+      "notesPlaceholder": "Add optional notes",
+      "save": "Save Purchase",
       "cancel": "Cancel"
     }
   },

@@ -164,6 +164,46 @@ type InventoryForm = {
   notes: string;
 };
 
+type PurchaseItem = {
+  rowId: string;
+  inventoryItemId: number;
+  itemName: string;
+  arabicItemName: string;
+  sku: string;
+  currentStock: number;
+  quantity: number;
+  costPrice: number;
+  lineTotal: number;
+};
+
+type Purchase = {
+  id: number;
+  purchaseId: string;
+  supplierName: string;
+  purchaseDate: string;
+  items: PurchaseItem[];
+  totalQuantity: number;
+  totalAmount: number;
+  paymentStatus: PaymentStatus;
+  notes: string;
+  createdBy: string;
+};
+
+type PurchaseItemFormLine = {
+  rowId: string;
+  inventoryItemId: string;
+  quantity: string;
+  costPrice: string;
+};
+
+type PurchaseForm = {
+  supplierName: string;
+  purchaseDate: string;
+  paymentStatus: PaymentStatus;
+  notes: string;
+  items: PurchaseItemFormLine[];
+};
+
 const activeJobStatuses: JobCardStatus[] = ["inWorkshop"];
 
 const navigationItems: Array<{ key: SectionKey; translationKey: string }> = [
@@ -614,6 +654,76 @@ const emptyInventoryForm: InventoryForm = {
   notes: "",
 };
 
+const initialPurchases: Purchase[] = [
+  {
+    id: 1,
+    purchaseId: "PO-1001",
+    supplierName: "Gulf Auto Supplies",
+    purchaseDate: "2026-05-01",
+    items: [
+      {
+        rowId: "mock-po-1001-1",
+        inventoryItemId: 1,
+        itemName: "Engine Oil",
+        arabicItemName: "زيت المحرك",
+        sku: "OIL-5W30-4L",
+        currentStock: 8,
+        quantity: 10,
+        costPrice: 32,
+        lineTotal: 320,
+      },
+      {
+        rowId: "mock-po-1001-2",
+        inventoryItemId: 2,
+        itemName: "Oil Filter",
+        arabicItemName: "فلتر زيت",
+        sku: "FLT-OIL-TY01",
+        currentStock: 5,
+        quantity: 4,
+        costPrice: 22,
+        lineTotal: 88,
+      },
+    ],
+    totalQuantity: 14,
+    totalAmount: 408,
+    paymentStatus: "paid",
+    notes: "Monthly fast-moving service stock.",
+    createdBy: "Hamza",
+  },
+  {
+    id: 2,
+    purchaseId: "PO-1002",
+    supplierName: "Eastern Brake Supply",
+    purchaseDate: "2026-05-03",
+    items: [
+      {
+        rowId: "mock-po-1002-1",
+        inventoryItemId: 4,
+        itemName: "Brake Pads",
+        arabicItemName: "فحمات فرامل",
+        sku: "BRK-PAD-FR01",
+        currentStock: 2,
+        quantity: 3,
+        costPrice: 145,
+        lineTotal: 435,
+      },
+    ],
+    totalQuantity: 3,
+    totalAmount: 435,
+    paymentStatus: "partial",
+    notes: "Front brake pad sets for scheduled jobs.",
+    createdBy: "Hamza",
+  },
+];
+
+const emptyPurchaseForm: PurchaseForm = {
+  supplierName: "",
+  purchaseDate: "",
+  paymentStatus: "unpaid",
+  notes: "",
+  items: [],
+};
+
 export default function Home() {
   const { dir, locale, setLocale, t } = useLanguage();
   const [activeSection, setActiveSection] = useState<SectionKey>("dashboard");
@@ -645,6 +755,13 @@ export default function Home() {
     useState<InventoryForm>(emptyInventoryForm);
   const [editingInventoryItemId, setEditingInventoryItemId] =
     useState<number | null>(null);
+  const [purchases, setPurchases] = useState<Purchase[]>(initialPurchases);
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [purchaseForm, setPurchaseForm] = useState<PurchaseForm>(emptyPurchaseForm);
+  const [expandedPurchaseId, setExpandedPurchaseId] = useState<number | null>(null);
+  const [duplicatePurchaseRowId, setDuplicatePurchaseRowId] = useState<string | null>(
+    null,
+  );
   const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
 
   const isArabic = locale === "ar";
@@ -819,6 +936,17 @@ export default function Home() {
     }, 1000);
 
     return `JC-${highestJobNumber + 1}`;
+  };
+
+  const getNextPurchaseId = () => {
+    const highestPurchaseNumber = purchases.reduce((highestNumber, purchase) => {
+      const parsedNumber = Number(purchase.purchaseId.replace("PO-", ""));
+      return Number.isFinite(parsedNumber)
+        ? Math.max(highestNumber, parsedNumber)
+        : highestNumber;
+    }, 1000);
+
+    return `PO-${highestPurchaseNumber + 1}`;
   };
 
   const getJobPartsFromForm = () => {
@@ -1363,13 +1491,111 @@ export default function Home() {
     showToast(archived ? "toast.recordArchived" : "toast.recordRestored");
   };
 
+  const openPurchaseModal = () => {
+    setPurchaseForm({
+      ...emptyPurchaseForm,
+      purchaseDate: getTodayInputValue(),
+    });
+    setDuplicatePurchaseRowId(null);
+    setIsPurchaseModalOpen(true);
+  };
+
+  const closePurchaseModal = () => {
+    setIsPurchaseModalOpen(false);
+    setPurchaseForm(emptyPurchaseForm);
+    setDuplicatePurchaseRowId(null);
+  };
+
+  const getPurchaseItemsFromForm = () => {
+    return purchaseForm.items.reduce<PurchaseItem[]>((items, itemLine) => {
+      const inventoryItem = inventoryItems.find(
+        (item) => item.id === Number(itemLine.inventoryItemId),
+      );
+      const quantity = parsePositiveNumber(itemLine.quantity);
+
+      if (!inventoryItem || quantity <= 0) {
+        return items;
+      }
+
+      const costPrice = parsePositiveNumber(itemLine.costPrice);
+
+      return [
+        ...items,
+        {
+          rowId: itemLine.rowId,
+          inventoryItemId: inventoryItem.id,
+          itemName: inventoryItem.itemName,
+          arabicItemName: inventoryItem.arabicItemName,
+          sku: inventoryItem.sku,
+          currentStock: inventoryItem.stockQuantity,
+          quantity,
+          costPrice,
+          lineTotal: quantity * costPrice,
+        },
+      ];
+    }, []);
+  };
+
+  const increaseInventoryStockFromPurchase = (purchaseItems: PurchaseItem[]) => {
+    const purchasedQuantities = purchaseItems.reduce<Record<number, number>>(
+      (quantities, item) => ({
+        ...quantities,
+        [item.inventoryItemId]:
+          (quantities[item.inventoryItemId] ?? 0) + item.quantity,
+      }),
+      {},
+    );
+
+    setInventoryItems((currentItems) =>
+      currentItems.map((item) => ({
+        ...item,
+        stockQuantity:
+          item.stockQuantity + (purchasedQuantities[item.id] ?? 0),
+      })),
+    );
+  };
+
+  const savePurchase = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const purchaseItems = getPurchaseItemsFromForm();
+    const purchasedItemIds = purchaseItems.map((item) => item.inventoryItemId);
+
+    if (new Set(purchasedItemIds).size !== purchasedItemIds.length) {
+      showToast("toast.duplicateParts");
+      return;
+    }
+
+    if (purchaseItems.length === 0) {
+      showToast("toast.purchaseItemsRequired");
+      return;
+    }
+
+    const nextPurchase: Purchase = {
+      id: Date.now(),
+      purchaseId: getNextPurchaseId(),
+      supplierName: purchaseForm.supplierName.trim(),
+      purchaseDate: purchaseForm.purchaseDate,
+      items: purchaseItems,
+      totalQuantity: purchaseItems.reduce((total, item) => total + item.quantity, 0),
+      totalAmount: purchaseItems.reduce((total, item) => total + item.lineTotal, 0),
+      paymentStatus: purchaseForm.paymentStatus,
+      notes: purchaseForm.notes.trim(),
+      createdBy: "Hamza",
+    };
+
+    setPurchases((currentPurchases) => [nextPurchase, ...currentPurchases]);
+    increaseInventoryStockFromPurchase(purchaseItems);
+    closePurchaseModal();
+  };
+
   const sectionHeaderKeys: Record<SectionKey, { title: string; subtitle: string }> = {
     dashboard: { title: "topbar.title", subtitle: "topbar.subtitle" },
     customers: { title: "customers.title", subtitle: "customers.subtitle" },
     vehicles: { title: "vehicles.title", subtitle: "vehicles.subtitle" },
     jobCards: { title: "jobCards.title", subtitle: "jobCards.subtitle" },
     inventory: { title: "inventory.title", subtitle: "inventory.subtitle" },
-    purchases: { title: "topbar.title", subtitle: "topbar.subtitle" },
+    purchases: { title: "purchases.title", subtitle: "purchases.subtitle" },
     expenses: { title: "topbar.title", subtitle: "topbar.subtitle" },
     invoices: { title: "topbar.title", subtitle: "topbar.subtitle" },
     reports: { title: "topbar.title", subtitle: "topbar.subtitle" },
@@ -1592,6 +1818,25 @@ export default function Home() {
                 onSearchChange={setInventorySearch}
                 onTabChange={setInventoryTab}
                 onUpdateForm={setInventoryForm}
+                t={t}
+              />
+            ) : activeSection === "purchases" ? (
+              <PurchasesSection
+                duplicateRowId={duplicatePurchaseRowId}
+                expandedPurchaseId={expandedPurchaseId}
+                formatDate={formatDate}
+                formatMoney={formatMoney}
+                formatNumber={formatNumber}
+                inventoryItems={inventoryItems}
+                isModalOpen={isPurchaseModalOpen}
+                onCloseModal={closePurchaseModal}
+                onDuplicateRowChange={setDuplicatePurchaseRowId}
+                onExpandedPurchaseChange={setExpandedPurchaseId}
+                onOpenModal={openPurchaseModal}
+                onSave={savePurchase}
+                onUpdateForm={setPurchaseForm}
+                purchaseForm={purchaseForm}
+                purchases={purchases}
                 t={t}
               />
             ) : (
@@ -3014,21 +3259,21 @@ function JobCardModal({
                 <button
                   type="button"
                   onClick={addPartLine}
-                  className="h-10 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                  className="h-9 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
                 >
                   {t("jobCards.parts.addPart")}
                 </button>
               </div>
 
-              <div className="mt-4 grid gap-3">
+              <div className="mt-4">
                 {jobCardForm.partsUsed.length > 0 ? (
-                  <div className="grid gap-3">
-                    <div className="hidden rounded-md bg-white px-3 py-2 text-xs font-semibold uppercase text-slate-400 lg:grid lg:grid-cols-[1.5fr_0.8fr_0.7fr_0.9fr_0.9fr_auto] lg:gap-3">
+                  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                    <div className="hidden border-b border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold uppercase text-slate-500 lg:grid lg:grid-cols-[2.2fr_1.2fr_1fr_1fr_1fr_auto] lg:items-center lg:gap-3">
                       <span>{t("jobCards.parts.inventoryItem")}</span>
-                      <span>{t("jobCards.parts.availableStockLabel")}</span>
-                      <span>{t("jobCards.parts.quantity")}</span>
-                      <span>{t("jobCards.parts.unitSellingPrice")}</span>
-                      <span>{t("jobCards.parts.lineTotal")}</span>
+                      <span className="text-center">{t("jobCards.parts.availableStockLabel")}</span>
+                      <span className="text-center">{t("jobCards.parts.quantity")}</span>
+                      <span className="text-center">{t("jobCards.parts.unitSellingPrice")}</span>
+                      <span className="text-center">{t("jobCards.parts.lineTotal")}</span>
                       <span className="text-end">{t("jobCards.parts.actions")}</span>
                     </div>
 
@@ -3050,7 +3295,7 @@ function JobCardModal({
                       return (
                         <div
                           key={partLine.rowId}
-                          className="rounded-lg border border-slate-200 bg-white p-3"
+                          className="border-b border-slate-100 p-3 transition last:border-b-0 hover:bg-slate-50/70"
                         >
                           <div className="mb-3 flex flex-col gap-2 lg:hidden">
                             <div>
@@ -3068,7 +3313,7 @@ function JobCardModal({
                             </div>
                           </div>
 
-                          <div className="grid gap-3 lg:grid-cols-[1.5fr_0.8fr_0.7fr_0.9fr_0.9fr_auto] lg:items-end">
+                          <div className="grid gap-3 lg:grid-cols-[2.2fr_1.2fr_1fr_1fr_1fr_auto] lg:items-center">
                             <label className="block">
                               <span className="text-sm font-medium text-slate-700 lg:sr-only">
                                 {t("jobCards.parts.inventoryItem")}
@@ -3099,7 +3344,7 @@ function JobCardModal({
                                       : "0",
                                   });
                                 }}
-                                className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 lg:mt-0"
+                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 lg:mt-0"
                               >
                                 <option value="">
                                   {t("jobCards.parts.selectItem")}
@@ -3136,7 +3381,7 @@ function JobCardModal({
                               <p className="text-xs font-medium uppercase text-slate-400 lg:sr-only">
                                 {t("jobCards.parts.availableStockLabel")}
                               </p>
-                              <div className="mt-1 flex flex-wrap gap-2 lg:mt-0">
+                              <div className="mt-1 flex flex-wrap gap-2 lg:mt-0 lg:flex-col lg:items-center">
                                 {selectedItem ? (
                                   <>
                                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
@@ -3159,37 +3404,47 @@ function JobCardModal({
                               </div>
                             </div>
 
-                            <FormField
-                              inputType="number"
-                              label={t("jobCards.parts.quantity")}
-                              min="0"
-                              value={partLine.quantity}
-                              onChange={(value) =>
-                                updatePartLine(partLine.rowId, {
-                                  quantity: value,
-                                })
-                              }
-                              placeholder={t("jobCards.parts.quantityPlaceholder")}
-                            />
+                            <label className="block">
+                              <span className="text-sm font-medium text-slate-700 lg:sr-only">
+                                {t("jobCards.parts.quantity")}
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={partLine.quantity}
+                                onChange={(event) =>
+                                  updatePartLine(partLine.rowId, {
+                                    quantity: event.target.value,
+                                  })
+                                }
+                                placeholder={t("jobCards.parts.quantityPlaceholder")}
+                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 lg:mt-0"
+                              />
+                            </label>
 
-                            <FormField
-                              inputType="number"
-                              label={t("jobCards.parts.unitSellingPrice")}
-                              min="0"
-                              value={partLine.unitSellingPrice}
-                              onChange={(value) =>
-                                updatePartLine(partLine.rowId, {
-                                  unitSellingPrice: value,
-                                })
-                              }
-                              placeholder={t("jobCards.parts.pricePlaceholder")}
-                            />
+                            <label className="block">
+                              <span className="text-sm font-medium text-slate-700 lg:sr-only">
+                                {t("jobCards.parts.unitSellingPrice")}
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={partLine.unitSellingPrice}
+                                onChange={(event) =>
+                                  updatePartLine(partLine.rowId, {
+                                    unitSellingPrice: event.target.value,
+                                  })
+                                }
+                                placeholder={t("jobCards.parts.pricePlaceholder")}
+                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 lg:mt-0"
+                              />
+                            </label>
 
                             <div>
                               <p className="text-xs font-medium uppercase text-slate-400 lg:sr-only">
                                 {t("jobCards.parts.lineTotal")}
                               </p>
-                              <p className="mt-1 text-base font-semibold text-slate-950 lg:mt-0">
+                              <p className="mt-1 text-base font-bold text-slate-950 lg:mt-0 lg:text-center">
                                 {formatMoney(getPartLineTotal(partLine))}
                               </p>
                             </div>
@@ -3197,7 +3452,7 @@ function JobCardModal({
                             <button
                               type="button"
                               onClick={() => removePartLine(partLine.rowId)}
-                              className="h-10 rounded-md border border-rose-200 px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+                              className="h-8 rounded-md border border-rose-200 px-2.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
                             >
                               {t("common.remove")}
                             </button>
@@ -3222,22 +3477,31 @@ function JobCardModal({
                     })}
                   </div>
                 ) : (
-                  <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
+                  <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-5 text-center text-sm text-slate-500">
                     {t("jobCards.parts.empty")}
                   </p>
                 )}
               </div>
             </section>
 
-            <CustomerField
-              label={t("jobCards.fields.partsCost")}
-              value={formatMoney(partsTotal)}
-            />
-
-            <CustomerField
-              label={t("jobCards.fields.totalAmount")}
-              value={formatMoney(totalAmount)}
-            />
+            <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-medium uppercase text-slate-400">
+                  {t("jobCards.fields.partsCost")}
+                </p>
+                <p className="mt-1 text-lg font-semibold text-slate-900">
+                  {formatMoney(partsTotal)}
+                </p>
+              </div>
+              <div className="sm:text-end">
+                <p className="text-xs font-medium uppercase text-slate-400">
+                  {t("jobCards.fields.totalAmount")}
+                </p>
+                <p className="mt-1 text-xl font-bold text-emerald-800">
+                  {formatMoney(totalAmount)}
+                </p>
+              </div>
+            </section>
 
             <label className="block">
               <span className="text-sm font-medium text-slate-700">
@@ -3289,6 +3553,586 @@ function JobCardModal({
             className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800"
           >
             {t("jobCards.form.save")}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function PurchasesSection({
+  duplicateRowId,
+  expandedPurchaseId,
+  formatDate,
+  formatMoney,
+  formatNumber,
+  inventoryItems,
+  isModalOpen,
+  onCloseModal,
+  onDuplicateRowChange,
+  onExpandedPurchaseChange,
+  onOpenModal,
+  onSave,
+  onUpdateForm,
+  purchaseForm,
+  purchases,
+  t,
+}: {
+  duplicateRowId: string | null;
+  expandedPurchaseId: number | null;
+  formatDate: (value: string) => string;
+  formatMoney: (value: number) => string;
+  formatNumber: (value: number) => string;
+  inventoryItems: InventoryItem[];
+  isModalOpen: boolean;
+  onCloseModal: () => void;
+  onDuplicateRowChange: (rowId: string | null) => void;
+  onExpandedPurchaseChange: (purchaseId: number | null) => void;
+  onOpenModal: () => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdateForm: (value: PurchaseForm) => void;
+  purchaseForm: PurchaseForm;
+  purchases: Purchase[];
+  t: (key: string) => string;
+}) {
+  const sortedPurchases = purchases.toSorted((firstPurchase, secondPurchase) =>
+    secondPurchase.purchaseDate.localeCompare(firstPurchase.purchaseDate),
+  );
+
+  return (
+    <>
+      <section className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-medium text-emerald-700">
+            {t("purchases.recordCount").replace("{count}", String(purchases.length))}
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-normal">
+            {t("purchases.title")}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            {t("purchases.subtitle")}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onOpenModal}
+          className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800"
+        >
+          {t("purchases.addButton")}
+        </button>
+      </section>
+
+      {sortedPurchases.length > 0 ? (
+        <section className="grid gap-4 xl:grid-cols-2">
+          {sortedPurchases.map((purchase) => {
+            const isExpanded = expandedPurchaseId === purchase.id;
+
+            return (
+              <article
+                key={purchase.id}
+                className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="text-xl font-semibold tracking-normal text-slate-950">
+                      {purchase.purchaseId}
+                    </h3>
+                    <p className="mt-1 text-sm font-semibold text-slate-800">
+                      {purchase.supplierName}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {formatDate(purchase.purchaseDate)}
+                    </p>
+                  </div>
+                  <PaymentStatusBadge status={purchase.paymentStatus} t={t} />
+                </div>
+
+                <dl className="mt-5 grid gap-4 sm:grid-cols-3">
+                  <CustomerField
+                    label={t("purchases.fields.itemsCount")}
+                    value={formatNumber(purchase.items.length)}
+                  />
+                  <CustomerField
+                    label={t("purchases.fields.totalQuantity")}
+                    value={formatNumber(purchase.totalQuantity)}
+                  />
+                  <CustomerField
+                    label={t("purchases.fields.totalAmount")}
+                    value={formatMoney(purchase.totalAmount)}
+                  />
+                  <CustomerField
+                    label={t("purchases.fields.createdBy")}
+                    value={purchase.createdBy}
+                  />
+                  <CustomerField
+                    label={t("purchases.fields.notes")}
+                    value={purchase.notes || t("common.notAvailable")}
+                  />
+                </dl>
+
+                {isExpanded ? (
+                  <div className="mt-5 overflow-hidden rounded-lg border border-slate-200">
+                    <div className="grid grid-cols-[1.6fr_0.8fr_0.8fr_0.9fr] gap-3 bg-slate-100 px-3 py-2 text-xs font-semibold uppercase text-slate-500">
+                      <span>{t("purchases.items.inventoryItem")}</span>
+                      <span className="text-center">{t("purchases.items.quantity")}</span>
+                      <span className="text-center">{t("purchases.items.costPrice")}</span>
+                      <span className="text-end">{t("purchases.items.lineTotal")}</span>
+                    </div>
+                    {purchase.items.map((item) => (
+                      <div
+                        key={item.rowId}
+                        className="grid grid-cols-[1.6fr_0.8fr_0.8fr_0.9fr] gap-3 border-t border-slate-100 px-3 py-3 text-sm"
+                      >
+                        <div>
+                          <p className="font-semibold text-slate-900">{item.itemName}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {item.arabicItemName}
+                          </p>
+                          <p className="mt-0.5 text-xs font-medium text-slate-500">
+                            {item.sku}
+                          </p>
+                        </div>
+                        <p className="text-center font-semibold text-slate-800">
+                          {formatNumber(item.quantity)}
+                        </p>
+                        <p className="text-center font-semibold text-slate-800">
+                          {formatMoney(item.costPrice)}
+                        </p>
+                        <p className="text-end font-bold text-slate-950">
+                          {formatMoney(item.lineTotal)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onExpandedPurchaseChange(isExpanded ? null : purchase.id)
+                    }
+                    className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    {t(isExpanded ? "purchases.hideDetails" : "purchases.viewDetails")}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      ) : (
+        <section className="rounded-lg border border-dashed border-slate-300 bg-white px-5 py-12 text-center shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-950">
+            {t("purchases.emptyTitle")}
+          </h3>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+            {t("purchases.emptyBody")}
+          </p>
+        </section>
+      )}
+
+      {isModalOpen ? (
+        <PurchaseModal
+          duplicateRowId={duplicateRowId}
+          formatMoney={formatMoney}
+          formatNumber={formatNumber}
+          inventoryItems={inventoryItems}
+          onClose={onCloseModal}
+          onDuplicateRowChange={onDuplicateRowChange}
+          onSave={onSave}
+          onUpdateForm={onUpdateForm}
+          purchaseForm={purchaseForm}
+          t={t}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function PurchaseModal({
+  duplicateRowId,
+  formatMoney,
+  formatNumber,
+  inventoryItems,
+  onClose,
+  onDuplicateRowChange,
+  onSave,
+  onUpdateForm,
+  purchaseForm,
+  t,
+}: {
+  duplicateRowId: string | null;
+  formatMoney: (value: number) => string;
+  formatNumber: (value: number) => string;
+  inventoryItems: InventoryItem[];
+  onClose: () => void;
+  onDuplicateRowChange: (rowId: string | null) => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdateForm: (value: PurchaseForm) => void;
+  purchaseForm: PurchaseForm;
+  t: (key: string) => string;
+}) {
+  const activeInventoryItems = inventoryItems.filter((item) => !item.archived);
+  const selectedItemIds = purchaseForm.items
+    .map((itemLine) => itemLine.inventoryItemId)
+    .filter(Boolean);
+  const getFormCost = (value: string) => {
+    const parsedValue = Number(value);
+    return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+  };
+  const getLineTotal = (itemLine: PurchaseItemFormLine) =>
+    getFormCost(itemLine.quantity) * getFormCost(itemLine.costPrice);
+  const totalQuantity = purchaseForm.items.reduce(
+    (total, itemLine) => total + getFormCost(itemLine.quantity),
+    0,
+  );
+  const totalAmount = purchaseForm.items.reduce(
+    (total, itemLine) => total + getLineTotal(itemLine),
+    0,
+  );
+
+  const createRowId = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `purchase-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const addItemLine = () => {
+    onUpdateForm({
+      ...purchaseForm,
+      items: [
+        ...purchaseForm.items,
+        {
+          rowId: createRowId(),
+          inventoryItemId: "",
+          quantity: "1",
+          costPrice: "0",
+        },
+      ],
+    });
+  };
+
+  const updateItemLine = (
+    rowId: string,
+    nextValues: Partial<Omit<PurchaseItemFormLine, "rowId">>,
+  ) => {
+    onUpdateForm({
+      ...purchaseForm,
+      items: purchaseForm.items.map((itemLine) =>
+        itemLine.rowId === rowId ? { ...itemLine, ...nextValues } : itemLine,
+      ),
+    });
+  };
+
+  const removeItemLine = (rowId: string) => {
+    onUpdateForm({
+      ...purchaseForm,
+      items: purchaseForm.items.filter((itemLine) => itemLine.rowId !== rowId),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
+      <form
+        onSubmit={onSave}
+        className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-w-5xl"
+      >
+        <div className="shrink-0 border-b border-slate-100 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold tracking-normal">
+                {t("purchases.form.title")}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {t("purchases.form.subtitle")}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
+            >
+              {t("purchases.form.close")}
+            </button>
+          </div>
+        </div>
+
+        <div className="max-h-[70vh] flex-1 overflow-y-auto p-5">
+          <div className="grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                label={t("purchases.fields.supplierName")}
+                value={purchaseForm.supplierName}
+                onChange={(value) =>
+                  onUpdateForm({ ...purchaseForm, supplierName: value })
+                }
+                placeholder={t("purchases.form.supplierPlaceholder")}
+                required
+              />
+              <FormField
+                inputType="date"
+                label={t("purchases.fields.purchaseDate")}
+                value={purchaseForm.purchaseDate}
+                onChange={(value) =>
+                  onUpdateForm({ ...purchaseForm, purchaseDate: value })
+                }
+                placeholder={t("purchases.form.datePlaceholder")}
+                required
+              />
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">
+                  {t("purchases.fields.paymentStatus")}
+                </span>
+                <select
+                  value={purchaseForm.paymentStatus}
+                  onChange={(event) =>
+                    onUpdateForm({
+                      ...purchaseForm,
+                      paymentStatus: event.target.value as PaymentStatus,
+                    })
+                  }
+                  className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
+                >
+                  <option value="unpaid">{t("jobCards.paymentStatus.unpaid")}</option>
+                  <option value="partial">{t("jobCards.paymentStatus.partial")}</option>
+                  <option value="paid">{t("jobCards.paymentStatus.paid")}</option>
+                </select>
+              </label>
+            </div>
+
+            <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    {t("purchases.items.title")}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {t("purchases.items.subtitle")}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addItemLine}
+                  className="h-9 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                >
+                  {t("purchases.items.addItem")}
+                </button>
+              </div>
+
+              <div className="mt-4">
+                {purchaseForm.items.length > 0 ? (
+                  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                    <div className="hidden border-b border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold uppercase text-slate-500 lg:grid lg:grid-cols-[2.2fr_1.1fr_1fr_1fr_1fr_auto] lg:items-center lg:gap-3">
+                      <span>{t("purchases.items.inventoryItem")}</span>
+                      <span className="text-center">{t("purchases.items.currentStock")}</span>
+                      <span className="text-center">{t("purchases.items.quantity")}</span>
+                      <span className="text-center">{t("purchases.items.costPrice")}</span>
+                      <span className="text-center">{t("purchases.items.lineTotal")}</span>
+                      <span className="text-end">{t("purchases.items.actions")}</span>
+                    </div>
+
+                    {purchaseForm.items.map((itemLine) => {
+                      const selectedItem = inventoryItems.find(
+                        (item) => item.id === Number(itemLine.inventoryItemId),
+                      );
+                      const showDuplicateWarning =
+                        duplicateRowId === itemLine.rowId ||
+                        (Boolean(itemLine.inventoryItemId) &&
+                          selectedItemIds.filter(
+                            (itemId) => itemId === itemLine.inventoryItemId,
+                          ).length > 1);
+
+                      return (
+                        <div
+                          key={itemLine.rowId}
+                          className="border-b border-slate-100 p-3 transition last:border-b-0 hover:bg-slate-50/70"
+                        >
+                          <div className="grid gap-3 lg:grid-cols-[2.2fr_1.1fr_1fr_1fr_1fr_auto] lg:items-center">
+                            <label className="block">
+                              <span className="text-sm font-medium text-slate-700 lg:sr-only">
+                                {t("purchases.items.inventoryItem")}
+                              </span>
+                              <select
+                                value={itemLine.inventoryItemId}
+                                onChange={(event) => {
+                                  const nextItemId = event.target.value;
+                                  const isDuplicateItem =
+                                    Boolean(nextItemId) &&
+                                    selectedItemIds.includes(nextItemId) &&
+                                    itemLine.inventoryItemId !== nextItemId;
+
+                                  if (isDuplicateItem) {
+                                    onDuplicateRowChange(itemLine.rowId);
+                                    return;
+                                  }
+
+                                  const nextItem = inventoryItems.find(
+                                    (item) => item.id === Number(nextItemId),
+                                  );
+                                  onDuplicateRowChange(null);
+                                  updateItemLine(itemLine.rowId, {
+                                    inventoryItemId: nextItemId,
+                                    costPrice: nextItem ? String(nextItem.costPrice) : "0",
+                                  });
+                                }}
+                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 lg:mt-0"
+                              >
+                                <option value="">{t("purchases.items.selectItem")}</option>
+                                {activeInventoryItems.map((item) => (
+                                  <option
+                                    key={item.id}
+                                    value={item.id}
+                                    disabled={
+                                      selectedItemIds.includes(String(item.id)) &&
+                                      itemLine.inventoryItemId !== String(item.id)
+                                    }
+                                  >
+                                    {item.itemName} - {item.sku}
+                                  </option>
+                                ))}
+                              </select>
+                              {selectedItem ? (
+                                <div className="mt-2">
+                                  <p className="text-sm font-semibold text-slate-900">
+                                    {selectedItem.itemName}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-slate-500">
+                                    {selectedItem.arabicItemName}
+                                  </p>
+                                  <p className="mt-0.5 text-xs font-medium text-slate-500">
+                                    {selectedItem.sku}
+                                  </p>
+                                </div>
+                              ) : null}
+                            </label>
+
+                            <div className="text-sm font-semibold text-slate-700 lg:text-center">
+                              <span className="lg:hidden">
+                                {t("purchases.items.currentStock")}:{" "}
+                              </span>
+                              {selectedItem
+                                ? formatNumber(selectedItem.stockQuantity)
+                                : t("common.notAvailable")}
+                            </div>
+
+                            <label className="block">
+                              <span className="text-sm font-medium text-slate-700 lg:sr-only">
+                                {t("purchases.items.quantity")}
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={itemLine.quantity}
+                                onChange={(event) =>
+                                  updateItemLine(itemLine.rowId, {
+                                    quantity: event.target.value,
+                                  })
+                                }
+                                placeholder={t("purchases.items.quantityPlaceholder")}
+                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 lg:mt-0"
+                              />
+                            </label>
+
+                            <label className="block">
+                              <span className="text-sm font-medium text-slate-700 lg:sr-only">
+                                {t("purchases.items.costPrice")}
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={itemLine.costPrice}
+                                onChange={(event) =>
+                                  updateItemLine(itemLine.rowId, {
+                                    costPrice: event.target.value,
+                                  })
+                                }
+                                placeholder={t("purchases.items.costPlaceholder")}
+                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 lg:mt-0"
+                              />
+                            </label>
+
+                            <p className="text-base font-bold text-slate-950 lg:text-center">
+                              {formatMoney(getLineTotal(itemLine))}
+                            </p>
+
+                            <button
+                              type="button"
+                              onClick={() => removeItemLine(itemLine.rowId)}
+                              className="h-8 rounded-md border border-rose-200 px-2.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                            >
+                              {t("common.remove")}
+                            </button>
+                          </div>
+
+                          {showDuplicateWarning ? (
+                            <div className="mt-3">
+                              <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                                {t("purchases.items.duplicateWarning")}
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-5 text-center text-sm text-slate-500">
+                    {t("purchases.items.empty")}
+                  </p>
+                )}
+              </div>
+            </section>
+
+            <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-3">
+              <CustomerField
+                label={t("purchases.summary.totalItems")}
+                value={formatNumber(purchaseForm.items.length)}
+              />
+              <CustomerField
+                label={t("purchases.summary.totalQuantity")}
+                value={formatNumber(totalQuantity)}
+              />
+              <div>
+                <p className="text-xs font-medium uppercase text-slate-400">
+                  {t("purchases.summary.totalAmount")}
+                </p>
+                <p className="mt-1 text-xl font-bold text-emerald-800">
+                  {formatMoney(totalAmount)}
+                </p>
+              </div>
+            </section>
+
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">
+                {t("purchases.fields.notes")}
+              </span>
+              <textarea
+                value={purchaseForm.notes}
+                onChange={(event) =>
+                  onUpdateForm({ ...purchaseForm, notes: event.target.value })
+                }
+                placeholder={t("purchases.form.notesPlaceholder")}
+                rows={4}
+                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white p-5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            {t("purchases.form.cancel")}
+          </button>
+          <button
+            type="submit"
+            className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800"
+          >
+            {t("purchases.form.save")}
           </button>
         </div>
       </form>
