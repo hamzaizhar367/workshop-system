@@ -49,7 +49,7 @@ const demoDataStorageKey = "car-dc9-demo-data-v1";
 
 function getStoredLocale() {
   if (typeof window === "undefined") {
-    return "ar";
+    return "en";
   }
 
   try {
@@ -58,9 +58,34 @@ function getStoredLocale() {
     ) as { settings?: { defaultLanguage?: Locale } };
     const storedLocale = storedData.settings?.defaultLanguage;
 
-    return storedLocale === "en" || storedLocale === "ar" ? storedLocale : "ar";
+    return storedLocale === "en" || storedLocale === "ar" ? storedLocale : "en";
   } catch {
-    return "ar";
+    return "en";
+  }
+}
+
+function saveStoredLocale(locale: Locale) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const storedData = JSON.parse(
+      window.localStorage.getItem(demoDataStorageKey) ?? "{}",
+    ) as { settings?: Record<string, unknown> };
+
+    window.localStorage.setItem(
+      demoDataStorageKey,
+      JSON.stringify({
+        ...storedData,
+        settings: {
+          ...(storedData.settings ?? {}),
+          defaultLanguage: locale,
+        },
+      }),
+    );
+  } catch {
+    // Demo language persistence should never block the UI toggle.
   }
 }
 
@@ -88,7 +113,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       locale,
       dir,
       isLanguageReady,
-      setLocale: setLocaleState,
+      setLocale: (nextLocale) => {
+        saveStoredLocale(nextLocale);
+        setLocaleState(nextLocale);
+      },
       t: (key) => {
         const message = getMessage(dictionaries[locale], key);
         return typeof message === "string" ? message : key;

@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import arMessages from "@/messages/ar.json";
+import enMessages from "@/messages/en.json";
 import { LanguageProvider } from "./language-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: arMessages.app.name,
-  description: arMessages.app.description,
+  title: enMessages.app.name,
+  description: enMessages.app.description,
 };
 
 export default function RootLayout({
@@ -15,8 +15,8 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="ar"
-      dir="rtl"
+      lang="en"
+      dir="ltr"
       className="h-full antialiased"
     >
       <body className="min-h-full flex flex-col">

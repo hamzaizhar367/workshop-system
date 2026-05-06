@@ -97,6 +97,7 @@
       "close": "Close",
       "namePlaceholder": "Enter customer name",
       "phonePlaceholder": "Enter phone number",
+      "phoneInvalid": "Enter a valid Saudi mobile number like +966 55 765 4321.",
       "cityPlaceholder": "Enter city",
       "totalVehiclesPlaceholder": "Enter total vehicles",
       "totalVisitsPlaceholder": "Enter total visits",
@@ -426,8 +427,8 @@
     "savedMessage": "Settings saved for this session.",
     "resetMessage": "Settings reset to defaults.",
     "demoNotice": {
-      "title": "Demo mode: data is saved in this browser only.",
-      "body": "Customers, jobs, invoices, reports, and settings persist after refresh on this device."
+      "title": "Demo mode: data is saved in this browser only. Final offline version will save permanently on the computer.",
+      "body": "Customers, jobs, invoices, reports, and settings persist after refresh on this device for testing."
     },
     "demoReset": {
       "button": "Reset demo data",

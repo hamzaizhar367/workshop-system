@@ -516,7 +516,7 @@ const initialVehicles: Vehicle[] = [
   {
     id: 6,
     customerId: 1,
-    ownerName: "Abdullah Al-Ghamdi",
+    ownerName: "Ahmed Al-Qahtani",
     plateNumber: "KBR 6724",
     make: "Mercedes-Benz",
     model: "Sprinter",
@@ -1067,8 +1067,38 @@ const formatSaudiPhone = (value: string) => {
   return ["+966", firstGroup, secondGroup, thirdGroup].filter(Boolean).join(" ");
 };
 
-const isValidSaudiMobilePhone = (value: string) =>
+const isValidSaudiPhone = (value: string) =>
   /^(\+9665\d{8})$/.test(normalizeSaudiPhone(value));
+
+const getSafeNumber = (value: unknown, fallback = 0) =>
+  typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+const getSyncedPersistedPayment = (
+  paymentStatus: PaymentStatus,
+  paidAmount: number,
+  totalAmount: number,
+) => {
+  if (paymentStatus === "paid") {
+    return {
+      paidAmount: totalAmount,
+      paymentStatus: "paid" as const,
+    };
+  }
+
+  if (paymentStatus === "unpaid") {
+    return {
+      paidAmount: 0,
+      paymentStatus: "unpaid" as const,
+    };
+  }
+
+  const safePaidAmount = Math.min(Math.max(0, paidAmount), totalAmount);
+
+  return {
+    paidAmount: safePaidAmount,
+    paymentStatus: getPaymentStatusFromAmounts(safePaidAmount, totalAmount),
+  };
+};
 
 const getStoredDemoData = () => {
   const fallback = getDefaultDemoData();
@@ -1087,17 +1117,17 @@ const getStoredDemoData = () => {
     vehicles: Array.isArray(storedData.vehicles) ? storedData.vehicles : fallback.vehicles,
     jobCards: (Array.isArray(storedData.jobCards) ? storedData.jobCards : fallback.jobCards).map(
       (jobCard) => {
-        const totalAmount = jobCard.laborCost + jobCard.partsCost;
-        const fallbackPaidAmount =
-          jobCard.paymentStatus === "paid" ? totalAmount : 0;
+        const totalAmount = getSafeNumber(jobCard.laborCost) + getSafeNumber(jobCard.partsCost);
+        const syncedPayment = getSyncedPersistedPayment(
+          jobCard.paymentStatus,
+          getSafeNumber(jobCard.paidAmount),
+          totalAmount,
+        );
 
         return {
           ...jobCard,
-          paidAmount:
-            typeof jobCard.paidAmount === "number" &&
-            Number.isFinite(jobCard.paidAmount)
-              ? jobCard.paidAmount
-              : fallbackPaidAmount,
+          paidAmount: syncedPayment.paidAmount,
+          paymentStatus: syncedPayment.paymentStatus,
         };
       },
     ),
@@ -1107,10 +1137,40 @@ const getStoredDemoData = () => {
     purchases: Array.isArray(storedData.purchases) ? storedData.purchases : fallback.purchases,
     expenses: Array.isArray(storedData.expenses) ? storedData.expenses : fallback.expenses,
     invoices: (Array.isArray(storedData.invoices) ? storedData.invoices : fallback.invoices).map(
-      (invoice) => ({
-        ...invoice,
-        customerPhone: normalizeSaudiPhone(invoice.customerPhone),
-      }),
+      (invoice) => {
+        const legacyInvoice = invoice as Invoice & { taxPercentage?: number };
+        const laborCost = getSafeNumber(invoice.laborCost);
+        const partsCost = getSafeNumber(invoice.partsCost);
+        const subtotal = laborCost + partsCost;
+        const discount = getSafeNumber(invoice.discount);
+        const legacyTaxAmount = getSafeNumber(invoice.taxAmount);
+        const taxPercentage = getSafeNumber(
+          legacyInvoice.taxPercentage,
+          subtotal > 0 ? (legacyTaxAmount / subtotal) * 100 : 0,
+        );
+        const taxAmount = subtotal * (taxPercentage / 100);
+        const grandTotal = Math.max(0, subtotal + taxAmount - discount);
+        const syncedPayment = getSyncedPersistedPayment(
+          invoice.paymentStatus,
+          getSafeNumber(invoice.paidAmount),
+          grandTotal,
+        );
+
+        return {
+          ...invoice,
+          customerPhone: normalizeSaudiPhone(invoice.customerPhone),
+          laborCost,
+          partsCost,
+          subtotal,
+          discount,
+          taxPercentage,
+          taxAmount,
+          grandTotal,
+          paidAmount: syncedPayment.paidAmount,
+          remainingBalance: Math.max(0, grandTotal - syncedPayment.paidAmount),
+          paymentStatus: syncedPayment.paymentStatus,
+        };
+      },
     ),
     settings: {
       ...fallback.settings,
@@ -1144,6 +1204,7 @@ export default function Home() {
   const [customerForm, setCustomerForm] = useState<CustomerForm>(emptyCustomerForm);
   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
   const [customerTab, setCustomerTab] = useState<RecordTab>("active");
+  const [customerPhoneError, setCustomerPhoneError] = useState(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialDemoData.vehicles);
   const [vehicleSearch, setVehicleSearch] = useState("");
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
@@ -1190,6 +1251,7 @@ export default function Home() {
     initialDemoData.settings,
   );
   const [settingsSavedMessage, setSettingsSavedMessage] = useState<string | null>(null);
+  const [settingsPhoneError, setSettingsPhoneError] = useState(false);
   const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
 
   const isArabic = locale === "ar";
@@ -1807,6 +1869,7 @@ export default function Home() {
       setCustomerForm(emptyCustomerForm);
     }
 
+    setCustomerPhoneError(false);
     setIsCustomerModalOpen(true);
   };
 
@@ -1814,10 +1877,17 @@ export default function Home() {
     setIsCustomerModalOpen(false);
     setCustomerForm(emptyCustomerForm);
     setEditingCustomerId(null);
+    setCustomerPhoneError(false);
   };
 
   const saveCustomer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const normalizedPhone = normalizeSaudiPhone(customerForm.phone);
+
+    if (!isValidSaudiPhone(normalizedPhone)) {
+      setCustomerPhoneError(true);
+      return;
+    }
 
     if (editingCustomerId) {
       setCustomers((currentCustomers) =>
@@ -1826,7 +1896,7 @@ export default function Home() {
             ? {
                 ...customer,
                 name: customerForm.name.trim(),
-                phone: normalizeSaudiPhone(customerForm.phone),
+                phone: normalizedPhone,
                 city: customerForm.city.trim(),
                 type: customerForm.type,
                 notes: customerForm.notes.trim(),
@@ -1841,7 +1911,7 @@ export default function Home() {
     const nextCustomer: Customer = {
       id: Date.now(),
       name: customerForm.name.trim(),
-      phone: normalizeSaudiPhone(customerForm.phone),
+      phone: normalizedPhone,
       city: customerForm.city.trim(),
       type: customerForm.type,
       notes: customerForm.notes.trim(),
@@ -2548,6 +2618,13 @@ export default function Home() {
 
   const saveSettings = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const normalizedPhone = normalizeSaudiPhone(settingsDraft.phoneNumber);
+
+    if (!isValidSaudiPhone(normalizedPhone)) {
+      setSettingsPhoneError(true);
+      return;
+    }
+
     const nextSettings = {
       ...settingsDraft,
       invoicePrefix: getDocumentPrefix(settingsDraft.invoicePrefix, "INV"),
@@ -2560,20 +2637,32 @@ export default function Home() {
         settingsDraft.englishSubtitle.trim() || defaultWorkshopSettings.englishSubtitle,
       arabicSubtitle:
         settingsDraft.arabicSubtitle.trim() || defaultWorkshopSettings.arabicSubtitle,
-      phoneNumber:
-        normalizeSaudiPhone(settingsDraft.phoneNumber) ||
-        defaultWorkshopSettings.phoneNumber,
+      phoneNumber: normalizedPhone,
     };
 
+    setSettingsPhoneError(false);
     setSettings(nextSettings);
     setSettingsDraft(nextSettings);
     setLocale(nextSettings.defaultLanguage);
     setSettingsSavedMessage("settings.savedMessage");
   };
 
+  const updateAppLanguage = (nextLanguage: AppLanguage) => {
+    setLocale(nextLanguage);
+    setSettings((currentSettings) => ({
+      ...currentSettings,
+      defaultLanguage: nextLanguage,
+    }));
+    setSettingsDraft((currentSettings) => ({
+      ...currentSettings,
+      defaultLanguage: nextLanguage,
+    }));
+  };
+
   const resetSettings = () => {
     setSettings(defaultWorkshopSettings);
     setSettingsDraft(defaultWorkshopSettings);
+    setSettingsPhoneError(false);
     setLocale(defaultWorkshopSettings.defaultLanguage);
     setSettingsSavedMessage("settings.resetMessage");
   };
@@ -2686,7 +2775,7 @@ export default function Home() {
                   <span className="sr-only">{t("language.label")}</span>
                   <button
                     type="button"
-                    onClick={() => setLocale("ar")}
+                    onClick={() => updateAppLanguage("ar")}
                     className={`h-9 rounded px-3 text-sm font-medium transition ${
                       isArabic
                         ? "bg-white text-emerald-800 shadow-sm"
@@ -2698,7 +2787,7 @@ export default function Home() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setLocale("en")}
+                    onClick={() => updateAppLanguage("en")}
                     className={`h-9 rounded px-3 text-sm font-medium transition ${
                       !isArabic
                         ? "bg-white text-emerald-800 shadow-sm"
@@ -2711,6 +2800,10 @@ export default function Home() {
                 </div>
               </div>
             </div>
+
+            <p className="mt-3 rounded-md border border-sky-100 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800">
+              {t("settings.demoNotice.title")}
+            </p>
 
             <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 md:hidden">
               {navigationItems.map((item) => {
@@ -2738,6 +2831,7 @@ export default function Home() {
             {activeSection === "customers" ? (
               <CustomersSection
                 customerForm={customerForm}
+                customerPhoneError={customerPhoneError}
                 customerSearch={customerSearch}
                 customers={filteredCustomers}
                 formatDate={formatDate}
@@ -2752,7 +2846,10 @@ export default function Home() {
                 onSearchChange={setCustomerSearch}
                 activeTab={customerTab}
                 onTabChange={setCustomerTab}
-                onUpdateForm={setCustomerForm}
+                onUpdateForm={(nextForm) => {
+                  setCustomerForm(nextForm);
+                  setCustomerPhoneError(false);
+                }}
                 formatPhone={formatPhone}
                 getCustomerJobs={getCustomerJobs}
                 getCustomerVehicles={getCustomerVehicles}
@@ -2928,9 +3025,13 @@ export default function Home() {
                 onResetDemoData={resetDemoData}
                 onReset={resetSettings}
                 onSave={saveSettings}
-                onUpdateSettings={setSettingsDraft}
+                onUpdateSettings={(nextSettings) => {
+                  setSettingsDraft(nextSettings);
+                  setSettingsPhoneError(false);
+                }}
                 savedMessage={settingsSavedMessage}
                 settings={settingsDraft}
+                settingsPhoneError={settingsPhoneError}
                 t={t}
               />
             ) : (
@@ -3065,6 +3166,7 @@ function DashboardSection({
 function CustomersSection({
   activeTab,
   customerForm,
+  customerPhoneError,
   customerSearch,
   customers,
   formatDate,
@@ -3086,6 +3188,7 @@ function CustomersSection({
 }: {
   activeTab: RecordTab;
   customerForm: CustomerForm;
+  customerPhoneError: boolean;
   customerSearch: string;
   customers: Customer[];
   formatDate: (value: string) => string;
@@ -3266,7 +3369,7 @@ function CustomersSection({
       {isModalOpen ? (
         <CustomerModal
           customerForm={customerForm}
-          formatPhone={formatPhone}
+          customerPhoneError={customerPhoneError}
           isEditing={isEditing}
           onClose={onCloseModal}
           onSave={onSave}
@@ -3289,7 +3392,7 @@ function CustomerField({ label, value }: { label: string; value: string }) {
 
 function CustomerModal({
   customerForm,
-  formatPhone,
+  customerPhoneError,
   isEditing,
   onClose,
   onSave,
@@ -3297,13 +3400,17 @@ function CustomerModal({
   t,
 }: {
   customerForm: CustomerForm;
-  formatPhone: (value: string) => string;
+  customerPhoneError: boolean;
   isEditing: boolean;
   onClose: () => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   onUpdateForm: (value: CustomerForm) => void;
   t: (key: string) => string;
 }) {
+  const showPhoneError =
+    customerPhoneError ||
+    (Boolean(customerForm.phone) && !isValidSaudiPhone(customerForm.phone));
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
       <form
@@ -3340,8 +3447,9 @@ function CustomerModal({
               required
             />
             <PhoneField
+              error={showPhoneError ? t("customers.form.phoneInvalid") : undefined}
               label={t("customers.fields.phone")}
-              value={formatPhone(customerForm.phone)}
+              value={formatSaudiPhone(customerForm.phone)}
               onChange={(value) => onUpdateForm({ ...customerForm, phone: normalizeSaudiPhone(value) })}
               placeholder={t("customers.form.phonePlaceholder")}
               required
@@ -5267,6 +5375,7 @@ function SettingsSection({
   onUpdateSettings,
   savedMessage,
   settings,
+  settingsPhoneError,
   t,
 }: {
   onResetDemoData: () => void;
@@ -5275,9 +5384,13 @@ function SettingsSection({
   onUpdateSettings: (value: WorkshopSettings) => void;
   savedMessage: string | null;
   settings: WorkshopSettings;
+  settingsPhoneError: boolean;
   t: (key: string) => string;
 }) {
   const directionPreview = settings.defaultLanguage === "ar" ? "rtl" : "ltr";
+  const showPhoneError =
+    settingsPhoneError ||
+    (Boolean(settings.phoneNumber) && !isValidSaudiPhone(settings.phoneNumber));
 
   return (
     <form onSubmit={onSave}>
@@ -5334,7 +5447,7 @@ function SettingsSection({
             <FormField label={t("settings.fields.logoInitials")} value={settings.logoInitials} onChange={(value) => onUpdateSettings({ ...settings, logoInitials: value })} placeholder={t("settings.placeholders.logoInitials")} required />
             <FormField label={t("settings.fields.englishSubtitle")} value={settings.englishSubtitle} onChange={(value) => onUpdateSettings({ ...settings, englishSubtitle: value })} placeholder={t("settings.placeholders.englishSubtitle")} required />
             <FormField label={t("settings.fields.arabicSubtitle")} value={settings.arabicSubtitle} onChange={(value) => onUpdateSettings({ ...settings, arabicSubtitle: value })} placeholder={t("settings.placeholders.arabicSubtitle")} required />
-            <PhoneField label={t("settings.fields.phoneNumber")} value={formatSaudiPhone(settings.phoneNumber)} onChange={(value) => onUpdateSettings({ ...settings, phoneNumber: normalizeSaudiPhone(value) })} placeholder={t("settings.placeholders.phoneNumber")} required />
+            <PhoneField error={showPhoneError ? t("customers.form.phoneInvalid") : undefined} label={t("settings.fields.phoneNumber")} value={formatSaudiPhone(settings.phoneNumber)} onChange={(value) => onUpdateSettings({ ...settings, phoneNumber: normalizeSaudiPhone(value) })} placeholder={t("settings.placeholders.phoneNumber")} required />
             <FormField label={t("settings.fields.city")} value={settings.city} onChange={(value) => onUpdateSettings({ ...settings, city: value })} placeholder={t("settings.placeholders.city")} />
             <FormField label={t("settings.fields.country")} value={settings.country} onChange={(value) => onUpdateSettings({ ...settings, country: value })} placeholder={t("settings.placeholders.country")} />
             <FormField label={t("settings.fields.address")} value={settings.address} onChange={(value) => onUpdateSettings({ ...settings, address: value })} placeholder={t("settings.placeholders.address")} />
@@ -7102,12 +7215,14 @@ function FormField({
 }
 
 function PhoneField({
+  error,
   label,
   onChange,
   placeholder,
   required,
   value,
 }: {
+  error?: string;
   label: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -7124,11 +7239,18 @@ function PhoneField({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         required={required}
-        pattern="^\+966\s5\d\s\d{3}\s\d{4}$"
-        aria-invalid={Boolean(value) && !isValidSaudiMobilePhone(value)}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? `${label.replace(/\s+/g, "-")}-error` : undefined}
         dir="ltr"
-        className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+        className={`mt-1 h-11 w-full rounded-md border bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 ${
+          error ? "border-rose-300" : "border-slate-200"
+        }`}
       />
+      {error ? (
+        <p id={`${label.replace(/\s+/g, "-")}-error`} className="mt-1 text-xs font-medium text-rose-600">
+          {error}
+        </p>
+      ) : null}
     </label>
   );
 }
