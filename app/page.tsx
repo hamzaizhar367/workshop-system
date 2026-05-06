@@ -862,7 +862,10 @@ export default function Home() {
             </div>
             <div>
               <p className="text-base font-semibold">{t("app.name")}</p>
-              <p className="text-xs text-slate-500">{t("app.location")}</p>
+              <p className="text-xs text-slate-500">{t("app.subtitle")}</p>
+              <p className="mt-0.5 text-xs font-medium text-slate-600" dir="ltr">
+                {t("app.phone")}
+              </p>
             </div>
           </div>
 
@@ -897,6 +900,11 @@ export default function Home() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="hidden text-end text-xs text-slate-500 xl:block">
+                  <p className="font-medium text-slate-700">{t("app.name")}</p>
+                  <p dir="ltr">{t("app.phone")}</p>
+                </div>
+
                 <label className="sr-only" htmlFor="global-search">
                   {t("topbar.searchPlaceholder")}
                 </label>

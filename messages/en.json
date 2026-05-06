@@ -1,8 +1,10 @@
 {
   "app": {
-    "name": "Najd Workshop",
-    "description": "Workshop management dashboard",
-    "shortName": "NW",
+    "name": "CAR DC9",
+    "description": "Electronic Alignment & Car Services",
+    "subtitle": "Electronic Alignment & Car Services",
+    "shortName": "DC9",
+    "phone": "0503191429",
     "location": "Saudi Arabia"
   },
   "language": {

@@ -1,8 +1,10 @@
 {
   "app": {
-    "name": "ورشة نجد",
-    "description": "لوحة إدارة الورشة",
-    "shortName": "ون",
+    "name": "CAR DC9",
+    "description": "ميزان إلكتروني وخدمات سيارات",
+    "subtitle": "ميزان إلكتروني وخدمات سيارات",
+    "shortName": "DC9",
+    "phone": "0503191429",
     "location": "المملكة العربية السعودية"
   },
   "language": {
