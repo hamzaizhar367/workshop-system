@@ -16,3 +16,166 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+@page {
+  size: A4;
+  margin: 8mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #ffffff;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  body.invoice-printing {
+    width: 194mm;
+    margin: 0;
+  }
+
+  body.invoice-printing .app-shell,
+  body.invoice-printing .fixed.inset-x-4.bottom-4 {
+    display: none !important;
+  }
+
+  .invoice-print-backdrop,
+  .invoice-print-shell {
+    position: static !important;
+    display: block !important;
+    width: 194mm !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  .invoice-print-page {
+    display: block !important;
+    width: 194mm !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .invoice-sheet {
+    width: 194mm !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    font-size: 11px;
+    line-height: 1.35;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .invoice-header {
+    gap: 12px !important;
+    padding-bottom: 12px !important;
+  }
+
+  .invoice-header h2 {
+    font-size: 22px !important;
+    line-height: 1.15 !important;
+  }
+
+  .invoice-header h3 {
+    font-size: 18px !important;
+  }
+
+  .invoice-header p,
+  .invoice-detail-card dl,
+  .invoice-work p,
+  .invoice-total-card {
+    font-size: 11px !important;
+  }
+
+  .invoice-number-card,
+  .invoice-detail-card,
+  .invoice-work p,
+  .invoice-total-card {
+    padding: 10px !important;
+    border-radius: 6px !important;
+  }
+
+  .invoice-detail-grid,
+  .invoice-work,
+  .invoice-parts,
+  .invoice-totals {
+    margin-top: 12px !important;
+  }
+
+  .invoice-detail-grid {
+    gap: 10px !important;
+  }
+
+  .invoice-detail-card h4 {
+    padding-bottom: 6px !important;
+    font-size: 12px !important;
+  }
+
+  .invoice-detail-card dl {
+    gap: 5px !important;
+    margin-top: 8px !important;
+  }
+
+  .invoice-work h4 {
+    font-size: 12px !important;
+  }
+
+  .invoice-work p {
+    margin-top: 6px !important;
+    line-height: 1.35 !important;
+  }
+
+  .invoice-parts {
+    border-radius: 6px !important;
+  }
+
+  .invoice-parts th,
+  .invoice-parts td {
+    padding: 6px 8px !important;
+  }
+
+  .invoice-parts thead {
+    display: table-header-group;
+  }
+
+  .invoice-parts tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .invoice-totals {
+    grid-template-columns: 1fr 64mm !important;
+    gap: 12px !important;
+  }
+
+  .invoice-qr {
+    width: 24mm !important;
+    height: 24mm !important;
+    padding: 8px !important;
+    font-size: 9px !important;
+  }
+
+  .invoice-total-card {
+    gap: 5px !important;
+  }
+
+  .invoice-total-card .text-xl {
+    font-size: 15px !important;
+  }
+
+  .invoice-total-card .py-3 {
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+  }
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLanguage } from "./language-provider";
 
 type SectionKey =
@@ -202,6 +202,53 @@ type PurchaseForm = {
   paymentStatus: PaymentStatus;
   notes: string;
   items: PurchaseItemFormLine[];
+};
+
+type InvoicePart = {
+  rowId: string;
+  itemName: string;
+  arabicItemName: string;
+  sku: string;
+  quantity: number;
+  unitSellingPrice: number;
+  lineTotal: number;
+};
+
+type Invoice = {
+  id: number;
+  invoiceNumber: string;
+  invoiceDate: string;
+  dueDate: string;
+  customerName: string;
+  customerPhone: string;
+  vehicle: string;
+  plateNumber: string;
+  jobCardId: number;
+  jobCardNumber: string;
+  jobDate: string;
+  workPerformed: string;
+  parts: InvoicePart[];
+  laborCost: number;
+  partsCost: number;
+  subtotal: number;
+  discount: number;
+  taxAmount: number;
+  grandTotal: number;
+  paidAmount: number;
+  remainingBalance: number;
+  paymentStatus: PaymentStatus;
+  notes: string;
+  archived: boolean;
+};
+
+type InvoiceForm = {
+  jobCardId: string;
+  invoiceDate: string;
+  dueDate: string;
+  discount: string;
+  taxAmount: string;
+  paidAmount: string;
+  notes: string;
 };
 
 const activeJobStatuses: JobCardStatus[] = ["inWorkshop"];
@@ -724,6 +771,16 @@ const emptyPurchaseForm: PurchaseForm = {
   items: [],
 };
 
+const emptyInvoiceForm: InvoiceForm = {
+  jobCardId: "",
+  invoiceDate: "",
+  dueDate: "",
+  discount: "0",
+  taxAmount: "0",
+  paidAmount: "0",
+  notes: "",
+};
+
 export default function Home() {
   const { dir, locale, setLocale, t } = useLanguage();
   const [activeSection, setActiveSection] = useState<SectionKey>("dashboard");
@@ -762,10 +819,25 @@ export default function Home() {
   const [duplicatePurchaseRowId, setDuplicatePurchaseRowId] = useState<string | null>(
     null,
   );
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [invoiceTab, setInvoiceTab] = useState<RecordTab>("active");
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [invoiceForm, setInvoiceForm] = useState<InvoiceForm>(emptyInvoiceForm);
+  const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null);
+  const [printInvoiceId, setPrintInvoiceId] = useState<number | null>(null);
   const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
 
   const isArabic = locale === "ar";
   const numberLocale = isArabic ? "ar-SA" : "en-SA";
+
+  useEffect(() => {
+    document.body.classList.toggle("invoice-printing", printInvoiceId !== null);
+
+    return () => {
+      document.body.classList.remove("invoice-printing");
+    };
+  }, [printInvoiceId]);
 
   const filteredCustomers = useMemo(() => {
     const query = customerSearch.trim().toLowerCase();
@@ -850,6 +922,29 @@ export default function Home() {
       ].some((value) => value.toLowerCase().includes(query));
     });
   }, [inventoryItems, inventorySearch, inventoryTab]);
+
+  const filteredInvoices = useMemo(() => {
+    const query = invoiceSearch.trim().toLowerCase();
+
+    return invoices.filter((invoice) => {
+      if (invoice.archived !== (invoiceTab === "archived")) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return [
+        invoice.invoiceNumber,
+        invoice.customerName,
+        invoice.customerPhone,
+        invoice.vehicle,
+        invoice.plateNumber,
+        invoice.jobCardNumber,
+      ].some((value) => value.toLowerCase().includes(query));
+    });
+  }, [invoiceSearch, invoices, invoiceTab]);
 
   const getVehicleJobs = (vehicleId: number) => {
     return jobCards.filter((jobCard) => jobCard.vehicleId === vehicleId);
@@ -947,6 +1042,44 @@ export default function Home() {
     }, 1000);
 
     return `PO-${highestPurchaseNumber + 1}`;
+  };
+
+  const getNextInvoiceNumber = () => {
+    const highestInvoiceNumber = invoices.reduce((highestNumber, invoice) => {
+      const parsedNumber = Number(invoice.invoiceNumber.replace("INV-", ""));
+      return Number.isFinite(parsedNumber)
+        ? Math.max(highestNumber, parsedNumber)
+        : highestNumber;
+    }, 1000);
+
+    return `INV-${highestInvoiceNumber + 1}`;
+  };
+
+  const getPaymentStatusFromAmounts = (paidAmount: number, grandTotal: number) => {
+    if (paidAmount <= 0) {
+      return "unpaid" as const;
+    }
+
+    return paidAmount >= grandTotal ? ("paid" as const) : ("partial" as const);
+  };
+
+  const getInvoiceCalculations = (
+    laborCost: number,
+    partsCost: number,
+    discount: number,
+    taxAmount: number,
+    paidAmount: number,
+  ) => {
+    const subtotal = laborCost + partsCost;
+    const grandTotal = Math.max(0, subtotal + taxAmount - discount);
+    const remainingBalance = Math.max(0, grandTotal - paidAmount);
+
+    return {
+      subtotal,
+      grandTotal,
+      remainingBalance,
+      paymentStatus: getPaymentStatusFromAmounts(paidAmount, grandTotal),
+    };
   };
 
   const getJobPartsFromForm = () => {
@@ -1589,6 +1722,155 @@ export default function Home() {
     closePurchaseModal();
   };
 
+  const getCompletedJobCardsForInvoice = () => {
+    const invoicedJobCardIds = new Set(
+      invoices.filter((invoice) => !invoice.archived).map((invoice) => invoice.jobCardId),
+    );
+
+    return jobCards.filter(
+      (jobCard) =>
+        !jobCard.archived &&
+        jobCard.status === "completed" &&
+        (!invoicedJobCardIds.has(jobCard.id) || jobCard.id === Number(invoiceForm.jobCardId)),
+    );
+  };
+
+  const openInvoiceModal = (invoice?: Invoice) => {
+    if (invoice) {
+      setEditingInvoiceId(invoice.id);
+      setInvoiceForm({
+        jobCardId: String(invoice.jobCardId),
+        invoiceDate: invoice.invoiceDate,
+        dueDate: invoice.dueDate,
+        discount: String(invoice.discount),
+        taxAmount: String(invoice.taxAmount),
+        paidAmount: String(invoice.paidAmount),
+        notes: invoice.notes,
+      });
+    } else {
+      setEditingInvoiceId(null);
+      setInvoiceForm({
+        ...emptyInvoiceForm,
+        invoiceDate: getTodayInputValue(),
+        dueDate: getTodayInputValue(),
+      });
+    }
+
+    setIsInvoiceModalOpen(true);
+  };
+
+  const closeInvoiceModal = () => {
+    setIsInvoiceModalOpen(false);
+    setEditingInvoiceId(null);
+    setInvoiceForm(emptyInvoiceForm);
+  };
+
+  const buildInvoiceValues = (jobCard: JobCard, existingInvoice?: Invoice) => {
+    const customer = customers.find((customerRecord) => customerRecord.id === jobCard.customerId);
+    const discount = parsePositiveNumber(invoiceForm.discount);
+    const taxAmount = parsePositiveNumber(invoiceForm.taxAmount);
+    const paidAmount = parsePositiveNumber(invoiceForm.paidAmount);
+    const calculations = getInvoiceCalculations(
+      jobCard.laborCost,
+      jobCard.partsCost,
+      discount,
+      taxAmount,
+      paidAmount,
+    );
+
+    return {
+      invoiceNumber: existingInvoice?.invoiceNumber ?? getNextInvoiceNumber(),
+      invoiceDate: invoiceForm.invoiceDate,
+      dueDate: invoiceForm.dueDate,
+      customerName: jobCard.customerName,
+      customerPhone: customer?.phone ?? "",
+      vehicle: jobCard.vehicleLabel,
+      plateNumber: jobCard.plateNumber,
+      jobCardId: jobCard.id,
+      jobCardNumber: jobCard.jobNumber,
+      jobDate: jobCard.date,
+      workPerformed: jobCard.workPerformed,
+      parts:
+        jobCard.partsUsed.length > 0
+          ? jobCard.partsUsed.map((part) => ({
+              rowId: part.rowId,
+              itemName: part.itemName,
+              arabicItemName: part.arabicItemName,
+              sku: inventoryItems.find((item) => item.id === part.inventoryItemId)?.sku ?? "",
+              quantity: part.quantity,
+              unitSellingPrice: part.unitSellingPrice,
+              lineTotal: part.lineTotal,
+            }))
+          : jobCard.partsCost > 0
+            ? [
+                {
+                  rowId: `legacy-parts-${jobCard.id}`,
+                  itemName: "Parts used",
+                  arabicItemName: "قطع مستخدمة",
+                  sku: "",
+                  quantity: 1,
+                  unitSellingPrice: jobCard.partsCost,
+                  lineTotal: jobCard.partsCost,
+                },
+              ]
+            : [],
+      laborCost: jobCard.laborCost,
+      partsCost: jobCard.partsCost,
+      subtotal: calculations.subtotal,
+      discount,
+      taxAmount,
+      grandTotal: calculations.grandTotal,
+      paidAmount,
+      remainingBalance: calculations.remainingBalance,
+      paymentStatus: calculations.paymentStatus,
+      notes: invoiceForm.notes.trim(),
+    };
+  };
+
+  const saveInvoice = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const selectedJobCard = jobCards.find(
+      (jobCard) => jobCard.id === Number(invoiceForm.jobCardId),
+    );
+
+    if (!selectedJobCard || selectedJobCard.status !== "completed") {
+      return;
+    }
+
+    if (editingInvoiceId) {
+      const existingInvoice = invoices.find((invoice) => invoice.id === editingInvoiceId);
+      const invoiceValues = buildInvoiceValues(selectedJobCard, existingInvoice);
+
+      setInvoices((currentInvoices) =>
+        currentInvoices.map((invoice) =>
+          invoice.id === editingInvoiceId ? { ...invoice, ...invoiceValues } : invoice,
+        ),
+      );
+      closeInvoiceModal();
+      return;
+    }
+
+    const invoiceValues = buildInvoiceValues(selectedJobCard);
+    const nextInvoice: Invoice = {
+      id: Date.now(),
+      ...invoiceValues,
+      archived: false,
+    };
+
+    setInvoices((currentInvoices) => [nextInvoice, ...currentInvoices]);
+    closeInvoiceModal();
+  };
+
+  const setInvoiceArchived = (invoiceId: number, archived: boolean) => {
+    setInvoices((currentInvoices) =>
+      currentInvoices.map((invoice) =>
+        invoice.id === invoiceId ? { ...invoice, archived } : invoice,
+      ),
+    );
+    showToast(archived ? "toast.recordArchived" : "toast.recordRestored");
+  };
+
   const sectionHeaderKeys: Record<SectionKey, { title: string; subtitle: string }> = {
     dashboard: { title: "topbar.title", subtitle: "topbar.subtitle" },
     customers: { title: "customers.title", subtitle: "customers.subtitle" },
@@ -1597,7 +1879,7 @@ export default function Home() {
     inventory: { title: "inventory.title", subtitle: "inventory.subtitle" },
     purchases: { title: "purchases.title", subtitle: "purchases.subtitle" },
     expenses: { title: "topbar.title", subtitle: "topbar.subtitle" },
-    invoices: { title: "topbar.title", subtitle: "topbar.subtitle" },
+    invoices: { title: "invoices.title", subtitle: "invoices.subtitle" },
     reports: { title: "topbar.title", subtitle: "topbar.subtitle" },
     settings: { title: "topbar.title", subtitle: "topbar.subtitle" },
   };
@@ -1607,7 +1889,7 @@ export default function Home() {
 
   return (
     <main dir={dir} className="min-h-screen bg-slate-100 text-slate-950">
-      <div className="flex min-h-screen">
+      <div className="app-shell flex min-h-screen">
         <aside className="hidden w-72 shrink-0 border-s border-slate-200 bg-white px-4 py-5 shadow-sm md:flex md:flex-col">
           <div className="mb-8 flex items-center gap-3">
             <div className="flex size-11 items-center justify-center rounded-lg bg-emerald-700 text-sm font-bold text-white">
@@ -1839,12 +2121,44 @@ export default function Home() {
                 purchases={purchases}
                 t={t}
               />
+            ) : activeSection === "invoices" ? (
+              <>
+                <InvoicesSection
+                  activeTab={invoiceTab}
+                  availableJobCards={getCompletedJobCardsForInvoice()}
+                  formatDate={formatDate}
+                  formatMoney={formatMoney}
+                  invoiceForm={invoiceForm}
+                  invoiceSearch={invoiceSearch}
+                  invoices={filteredInvoices}
+                  isEditing={editingInvoiceId !== null}
+                  isModalOpen={isInvoiceModalOpen}
+                  onArchivedChange={setInvoiceArchived}
+                  onCloseModal={closeInvoiceModal}
+                  onOpenModal={openInvoiceModal}
+                  onPrintInvoice={(invoice) => setPrintInvoiceId(invoice.id)}
+                  onSave={saveInvoice}
+                  onSearchChange={setInvoiceSearch}
+                  onTabChange={setInvoiceTab}
+                  onUpdateForm={setInvoiceForm}
+                  t={t}
+                />
+              </>
             ) : (
               <DashboardSection formatCardValue={formatCardValue} t={t} />
             )}
           </div>
         </section>
       </div>
+      {printInvoiceId ? (
+        <PrintInvoiceModal
+          formatDate={formatDate}
+          formatMoney={formatMoney}
+          invoice={invoices.find((invoice) => invoice.id === printInvoiceId)}
+          onClose={() => setPrintInvoiceId(null)}
+          t={t}
+        />
+      ) : null}
       {toastMessage ? (
         <div className="fixed inset-x-4 bottom-4 z-[60] flex justify-center">
           <div className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-lg">
@@ -3556,6 +3870,372 @@ function JobCardModal({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function InvoicesSection({
+  activeTab,
+  availableJobCards,
+  formatDate,
+  formatMoney,
+  invoiceForm,
+  invoiceSearch,
+  invoices,
+  isEditing,
+  isModalOpen,
+  onArchivedChange,
+  onCloseModal,
+  onOpenModal,
+  onPrintInvoice,
+  onSave,
+  onSearchChange,
+  onTabChange,
+  onUpdateForm,
+  t,
+}: {
+  activeTab: RecordTab;
+  availableJobCards: JobCard[];
+  formatDate: (value: string) => string;
+  formatMoney: (value: number) => string;
+  invoiceForm: InvoiceForm;
+  invoiceSearch: string;
+  invoices: Invoice[];
+  isEditing: boolean;
+  isModalOpen: boolean;
+  onArchivedChange: (invoiceId: number, archived: boolean) => void;
+  onCloseModal: () => void;
+  onOpenModal: (invoice?: Invoice) => void;
+  onPrintInvoice: (invoice: Invoice) => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onSearchChange: (value: string) => void;
+  onTabChange: (value: RecordTab) => void;
+  onUpdateForm: (value: InvoiceForm) => void;
+  t: (key: string) => string;
+}) {
+  return (
+    <>
+      <section className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-medium text-emerald-700">
+            {t(activeTab === "archived" ? "invoices.archivedRecordCount" : "invoices.activeRecordCount").replace("{count}", String(invoices.length))}
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-normal">{t("invoices.title")}</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{t("invoices.subtitle")}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onOpenModal()}
+          className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800"
+        >
+          {t("invoices.addButton")}
+        </button>
+      </section>
+
+      <section className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="flex-1">
+          <label className="sr-only" htmlFor="invoice-search">{t("invoices.searchLabel")}</label>
+          <input
+            id="invoice-search"
+            type="search"
+            value={invoiceSearch}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={t("invoices.searchPlaceholder")}
+            className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+          />
+        </div>
+        <RecordTabs activeTab={activeTab} onTabChange={onTabChange} t={t} />
+      </section>
+
+      {invoices.length > 0 ? (
+        <section className="grid gap-4 xl:grid-cols-2">
+          {invoices.map((invoice) => (
+            <article key={invoice.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-semibold tracking-normal text-slate-950">{invoice.invoiceNumber}</h3>
+                  <p className="mt-1 text-sm font-semibold text-slate-800">{invoice.customerName}</p>
+                  <p className="mt-1 text-sm text-slate-500">{invoice.vehicle} - {invoice.plateNumber}</p>
+                </div>
+                {invoice.archived ? (
+                  <span className="w-fit shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{t("common.archived")}</span>
+                ) : (
+                  <PaymentStatusBadge status={invoice.paymentStatus} t={t} />
+                )}
+              </div>
+              <dl className="mt-5 grid gap-4 sm:grid-cols-3">
+                <CustomerField label={t("invoices.fields.invoiceDate")} value={formatDate(invoice.invoiceDate)} />
+                <CustomerField label={t("invoices.fields.jobCardNumber")} value={invoice.jobCardNumber} />
+                <CustomerField label={t("invoices.fields.grandTotal")} value={formatMoney(invoice.grandTotal)} />
+                <CustomerField label={t("invoices.fields.paidAmount")} value={formatMoney(invoice.paidAmount)} />
+                <CustomerField label={t("invoices.fields.remainingBalance")} value={formatMoney(invoice.remainingBalance)} />
+                <CustomerField label={t("invoices.fields.customerPhone")} value={invoice.customerPhone || t("common.notAvailable")} />
+              </dl>
+              <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                <button type="button" onClick={() => onOpenModal(invoice)} className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                  {t("common.viewEdit")}
+                </button>
+                <button type="button" onClick={() => onPrintInvoice(invoice)} className="h-10 rounded-md border border-emerald-200 px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50">
+                  {t("invoices.printButton")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onArchivedChange(invoice.id, !invoice.archived)}
+                  className={`h-10 rounded-md border px-3 text-sm font-semibold transition ${invoice.archived ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50" : "border-amber-200 text-amber-700 hover:bg-amber-50"}`}
+                >
+                  {t(invoice.archived ? "common.restore" : "common.archive")}
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+      ) : (
+        <section className="rounded-lg border border-dashed border-slate-300 bg-white px-5 py-12 text-center shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-950">{t(activeTab === "archived" ? "invoices.emptyArchivedTitle" : "invoices.emptyActiveTitle")}</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{t(activeTab === "archived" ? "invoices.emptyArchivedBody" : "invoices.emptyActiveBody")}</p>
+        </section>
+      )}
+
+      {isModalOpen ? (
+        <InvoiceModal
+          availableJobCards={availableJobCards}
+          formatDate={formatDate}
+          formatMoney={formatMoney}
+          invoiceForm={invoiceForm}
+          isEditing={isEditing}
+          onClose={onCloseModal}
+          onSave={onSave}
+          onUpdateForm={onUpdateForm}
+          t={t}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function InvoiceModal({
+  availableJobCards,
+  formatDate,
+  formatMoney,
+  invoiceForm,
+  isEditing,
+  onClose,
+  onSave,
+  onUpdateForm,
+  t,
+}: {
+  availableJobCards: JobCard[];
+  formatDate: (value: string) => string;
+  formatMoney: (value: number) => string;
+  invoiceForm: InvoiceForm;
+  isEditing: boolean;
+  onClose: () => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdateForm: (value: InvoiceForm) => void;
+  t: (key: string) => string;
+}) {
+  const selectedJobCard = availableJobCards.find((jobCard) => jobCard.id === Number(invoiceForm.jobCardId));
+  const discount = Number(invoiceForm.discount) > 0 ? Number(invoiceForm.discount) : 0;
+  const taxAmount = Number(invoiceForm.taxAmount) > 0 ? Number(invoiceForm.taxAmount) : 0;
+  const paidAmount = Number(invoiceForm.paidAmount) > 0 ? Number(invoiceForm.paidAmount) : 0;
+  const subtotal = selectedJobCard ? selectedJobCard.laborCost + selectedJobCard.partsCost : 0;
+  const grandTotal = Math.max(0, subtotal + taxAmount - discount);
+  const remainingBalance = Math.max(0, grandTotal - paidAmount);
+  const paymentStatus = paidAmount <= 0 ? "unpaid" : paidAmount >= grandTotal ? "paid" : "partial";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
+      <form onSubmit={onSave} className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-w-4xl">
+        <div className="shrink-0 border-b border-slate-100 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold tracking-normal">{t(isEditing ? "invoices.form.editTitle" : "invoices.form.title")}</h2>
+              <p className="mt-1 text-sm text-slate-500">{t("invoices.form.subtitle")}</p>
+            </div>
+            <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">{t("invoices.form.close")}</button>
+          </div>
+        </div>
+        <div className="max-h-[70vh] flex-1 overflow-y-auto p-5">
+          <div className="grid gap-4">
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">{t("invoices.fields.jobCardNumber")}</span>
+              <select
+                value={invoiceForm.jobCardId}
+                onChange={(event) => onUpdateForm({ ...invoiceForm, jobCardId: event.target.value })}
+                disabled={isEditing}
+                required
+                className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 disabled:bg-slate-100"
+              >
+                <option value="">{t("invoices.form.jobCardPlaceholder")}</option>
+                {availableJobCards.map((jobCard) => (
+                  <option key={jobCard.id} value={jobCard.id}>{jobCard.jobNumber} - {jobCard.customerName} - {jobCard.plateNumber}</option>
+                ))}
+              </select>
+            </label>
+
+            {selectedJobCard ? (
+              <section className="grid gap-4 rounded-lg bg-slate-50 p-4 sm:grid-cols-3">
+                <CustomerField label={t("invoices.fields.customerName")} value={selectedJobCard.customerName} />
+                <CustomerField label={t("invoices.fields.vehicle")} value={selectedJobCard.vehicleLabel} />
+                <CustomerField label={t("invoices.fields.plateNumber")} value={selectedJobCard.plateNumber} />
+                <CustomerField label={t("invoices.fields.jobDate")} value={formatDate(selectedJobCard.date)} />
+                <CustomerField label={t("invoices.fields.workPerformed")} value={selectedJobCard.workPerformed} />
+                <CustomerField label={t("invoices.fields.subtotal")} value={formatMoney(subtotal)} />
+              </section>
+            ) : null}
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField inputType="date" label={t("invoices.fields.invoiceDate")} value={invoiceForm.invoiceDate} onChange={(value) => onUpdateForm({ ...invoiceForm, invoiceDate: value })} placeholder={t("invoices.form.invoiceDatePlaceholder")} required />
+              <FormField inputType="date" label={t("invoices.fields.dueDate")} value={invoiceForm.dueDate} onChange={(value) => onUpdateForm({ ...invoiceForm, dueDate: value })} placeholder={t("invoices.form.dueDatePlaceholder")} required />
+              <FormField inputType="number" label={t("invoices.fields.discount")} min="0" value={invoiceForm.discount} onChange={(value) => onUpdateForm({ ...invoiceForm, discount: value })} placeholder={t("invoices.form.discountPlaceholder")} />
+              <FormField inputType="number" label={t("invoices.fields.taxAmount")} min="0" value={invoiceForm.taxAmount} onChange={(value) => onUpdateForm({ ...invoiceForm, taxAmount: value })} placeholder={t("invoices.form.taxPlaceholder")} />
+              <FormField inputType="number" label={t("invoices.fields.paidAmount")} min="0" value={invoiceForm.paidAmount} onChange={(value) => onUpdateForm({ ...invoiceForm, paidAmount: value })} placeholder={t("invoices.form.paidPlaceholder")} />
+            </div>
+
+            <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-3">
+              <CustomerField label={t("invoices.fields.grandTotal")} value={formatMoney(grandTotal)} />
+              <CustomerField label={t("invoices.fields.remainingBalance")} value={formatMoney(remainingBalance)} />
+              <div>
+                <p className="text-xs font-medium uppercase text-slate-400">{t("invoices.fields.paymentStatus")}</p>
+                <div className="mt-1"><PaymentStatusBadge status={paymentStatus} t={t} /></div>
+              </div>
+            </section>
+
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">{t("invoices.fields.notes")}</span>
+              <textarea value={invoiceForm.notes} onChange={(event) => onUpdateForm({ ...invoiceForm, notes: event.target.value })} placeholder={t("invoices.form.notesPlaceholder")} rows={4} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600" />
+            </label>
+          </div>
+        </div>
+        <div className="sticky bottom-0 flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white p-5 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} className="h-11 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">{t("invoices.form.cancel")}</button>
+          <button type="submit" className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800">{t("invoices.form.save")}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function PrintInvoiceModal({
+  formatDate,
+  formatMoney,
+  invoice,
+  onClose,
+  t,
+}: {
+  formatDate: (value: string) => string;
+  formatMoney: (value: number) => string;
+  invoice?: Invoice;
+  onClose: () => void;
+  t: (key: string) => string;
+}) {
+  if (!invoice) {
+    return null;
+  }
+
+  return (
+    <div className="invoice-print-backdrop fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
+      <div className="invoice-print-shell flex max-h-[94vh] w-full flex-col overflow-hidden rounded-lg bg-slate-100 shadow-xl sm:max-w-5xl print:max-h-none print:overflow-visible print:rounded-none print:bg-white print:shadow-none">
+        <div className="shrink-0 border-b border-slate-100 bg-white p-4 print:hidden">
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => window.print()} className="h-10 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800">{t("invoices.printNow")}</button>
+            <button type="button" onClick={onClose} className="h-10 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">{t("invoices.form.close")}</button>
+          </div>
+        </div>
+        <div className="invoice-print-page max-h-[84vh] flex-1 overflow-y-auto p-4 sm:p-6 print:max-h-none print:overflow-visible print:p-0">
+          <section className="invoice-sheet mx-auto min-h-[1120px] w-full max-w-[820px] bg-white p-8 shadow-sm ring-1 ring-slate-200 sm:p-10 print:min-h-0 print:max-w-none print:p-0 print:shadow-none print:ring-0">
+            <div className="invoice-header flex flex-col gap-6 border-b-2 border-slate-900 pb-6 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-3xl font-black tracking-normal text-slate-950">{t("app.name")}</h2>
+                <p className="mt-2 text-base font-semibold text-slate-700">{t("app.subtitle")}</p>
+                <p className="mt-1 text-base font-semibold text-slate-700" lang="ar" dir="rtl">
+                  {"\u0645\u064a\u0632\u0627\u0646 \u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a \u0648\u062e\u062f\u0645\u0627\u062a \u0633\u064a\u0627\u0631\u0627\u062a"}
+                </p>
+                <p className="mt-3 text-sm font-bold text-slate-900" dir="ltr">{t("app.phone")}</p>
+              </div>
+              <div className="invoice-number-card rounded-lg border border-slate-200 bg-slate-50 p-4 text-start sm:min-w-64 sm:text-end">
+                <p className="text-xs font-medium uppercase text-slate-400">{t("invoices.fields.invoiceNumber")}</p>
+                <h3 className="mt-1 text-2xl font-black text-slate-950">{invoice.invoiceNumber}</h3>
+                <p className="mt-2 text-sm font-semibold text-slate-700">{formatDate(invoice.invoiceDate)}</p>
+                <div className="mt-3 flex sm:justify-end">
+                  <PaymentStatusBadge status={invoice.paymentStatus} t={t} />
+                </div>
+              </div>
+            </div>
+
+            <div className="invoice-detail-grid mt-6 grid gap-4 sm:grid-cols-2">
+              <section className="invoice-detail-card rounded-lg border border-slate-200 p-5">
+                <h4 className="border-b border-slate-100 pb-2 text-base font-bold text-slate-900">{t("invoices.print.customerDetails")}</h4>
+                <dl className="mt-3 grid gap-2 text-sm">
+                  <CustomerField label={t("invoices.fields.customerName")} value={invoice.customerName} />
+                  <CustomerField label={t("invoices.fields.customerPhone")} value={invoice.customerPhone || t("common.notAvailable")} />
+                  <CustomerField label={t("invoices.fields.paymentStatus")} value={t(`jobCards.paymentStatus.${invoice.paymentStatus}`)} />
+                </dl>
+              </section>
+              <section className="invoice-detail-card rounded-lg border border-slate-200 p-5">
+                <h4 className="border-b border-slate-100 pb-2 text-base font-bold text-slate-900">{t("invoices.print.vehicleDetails")}</h4>
+                <dl className="mt-3 grid gap-2 text-sm">
+                  <CustomerField label={t("invoices.fields.vehicle")} value={invoice.vehicle} />
+                  <CustomerField label={t("invoices.fields.plateNumber")} value={invoice.plateNumber} />
+                  <CustomerField label={t("invoices.fields.jobCardNumber")} value={invoice.jobCardNumber} />
+                </dl>
+              </section>
+            </div>
+
+            <section className="invoice-work mt-6">
+              <h4 className="text-base font-bold text-slate-900">{t("invoices.fields.workPerformed")}</h4>
+              <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">{invoice.workPerformed}</p>
+            </section>
+
+            <section className="invoice-parts mt-6 overflow-hidden rounded-lg border border-slate-200">
+              <table className="w-full border-collapse text-sm">
+                <thead className="bg-slate-900 text-xs font-bold uppercase text-white">
+                  <tr>
+                    <th className="w-[48%] px-4 py-3 text-start">{t("invoices.print.part")}</th>
+                    <th className="w-[14%] px-4 py-3 text-center">{t("jobCards.parts.quantity")}</th>
+                    <th className="w-[19%] px-4 py-3 text-center">{t("jobCards.parts.unitSellingPrice")}</th>
+                    <th className="w-[19%] px-4 py-3 text-end">{t("jobCards.parts.lineTotal")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoice.parts.length > 0 ? invoice.parts.map((part) => (
+                    <tr key={part.rowId} className="border-t border-slate-100">
+                      <td className="px-4 py-3 align-top">
+                        <p className="font-semibold text-slate-900">{part.itemName}</p>
+                        {part.arabicItemName ? (
+                          <p className="text-xs text-slate-500">{part.arabicItemName}</p>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-center align-top">{part.quantity}</td>
+                      <td className="px-4 py-3 text-center align-top">{formatMoney(part.unitSellingPrice)}</td>
+                      <td className="px-4 py-3 text-end font-semibold align-top">{formatMoney(part.lineTotal)}</td>
+                    </tr>
+                  )) : (
+                    <tr className="border-t border-slate-100">
+                      <td colSpan={4} className="px-4 py-4 text-sm text-slate-500">{t("jobCards.parts.empty")}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </section>
+
+            <div className="invoice-totals mt-6 grid gap-6 sm:grid-cols-[1fr_320px]">
+              <div className="invoice-qr flex size-36 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 p-4 text-center text-xs font-bold uppercase text-slate-400">
+                {t("invoices.print.qrPlaceholder")}
+              </div>
+              <dl className="invoice-total-card grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.laborCost")}</dt><dd className="font-semibold">{formatMoney(invoice.laborCost)}</dd></div>
+                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.partsCost")}</dt><dd className="font-semibold">{formatMoney(invoice.partsCost)}</dd></div>
+                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.discount")}</dt><dd className="font-semibold">{formatMoney(invoice.discount)}</dd></div>
+                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.taxAmount")}</dt><dd className="font-semibold">{formatMoney(invoice.taxAmount)}</dd></div>
+                <div className="flex justify-between gap-4 border-y border-slate-300 py-3 text-xl font-black text-slate-950"><dt>{t("invoices.fields.grandTotal")}</dt><dd>{formatMoney(invoice.grandTotal)}</dd></div>
+                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.paidAmount")}</dt><dd className="font-semibold">{formatMoney(invoice.paidAmount)}</dd></div>
+                <div className="flex justify-between gap-4 text-base font-black text-emerald-800"><dt>{t("invoices.fields.remainingBalance")}</dt><dd>{formatMoney(invoice.remainingBalance)}</dd></div>
+              </dl>
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
