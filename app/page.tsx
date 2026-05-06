@@ -43,6 +43,27 @@ type JobCardStatus = "inWorkshop" | "completed" | "cancelled";
 type PaymentStatus = "unpaid" | "partial" | "paid";
 type VehicleDisplayStatus = "active" | JobCardStatus;
 type RecordTab = "active" | "archived";
+type InventoryUnitType = "piece" | "liter" | "set" | "box";
+type InventoryItemType = "stock" | "service";
+
+type JobPart = {
+  id: number;
+  rowId: string;
+  inventoryItemId: number;
+  itemName: string;
+  arabicItemName: string;
+  quantity: number;
+  unitSellingPrice: number;
+  lineTotal: number;
+  itemType: InventoryItemType;
+};
+
+type JobPartFormLine = {
+  rowId: string;
+  inventoryItemId: string;
+  quantity: string;
+  unitSellingPrice: string;
+};
 
 type Vehicle = {
   id: number;
@@ -84,9 +105,12 @@ type JobCard = {
   mechanic: string;
   laborCost: number;
   partsCost: number;
+  partsUsed: JobPart[];
   paymentStatus: PaymentStatus;
   notes: string;
   archived: boolean;
+  stockDeducted: boolean;
+  deductedParts: JobPart[];
 };
 
 type JobCardForm = {
@@ -99,9 +123,48 @@ type JobCardForm = {
   mechanic: string;
   laborCost: string;
   partsCost: string;
+  partsUsed: JobPartFormLine[];
   paymentStatus: PaymentStatus;
   notes: string;
 };
+
+type InventoryItem = {
+  id: number;
+  itemName: string;
+  arabicItemName: string;
+  category: string;
+  sku: string;
+  brand: string;
+  supplierName: string;
+  itemType: InventoryItemType;
+  stockQuantity: number;
+  unitType: InventoryUnitType;
+  costPrice: number;
+  sellingPrice: number;
+  minimumStock: number;
+  location: string;
+  notes: string;
+  archived: boolean;
+};
+
+type InventoryForm = {
+  itemName: string;
+  arabicItemName: string;
+  category: string;
+  sku: string;
+  brand: string;
+  supplierName: string;
+  itemType: InventoryItemType;
+  stockQuantity: string;
+  unitType: InventoryUnitType;
+  costPrice: string;
+  sellingPrice: string;
+  minimumStock: string;
+  location: string;
+  notes: string;
+};
+
+const activeJobStatuses: JobCardStatus[] = ["inWorkshop"];
 
 const navigationItems: Array<{ key: SectionKey; translationKey: string }> = [
   { key: "dashboard", translationKey: "nav.dashboard" },
@@ -289,9 +352,12 @@ const initialJobCards: JobCard[] = [
     mechanic: "Yousef",
     laborCost: 450,
     partsCost: 400,
+    partsUsed: [],
     paymentStatus: "unpaid",
     notes: "Brake inspection and oil service",
     archived: false,
+    stockDeducted: false,
+    deductedParts: [],
   },
   {
     id: 2,
@@ -308,9 +374,12 @@ const initialJobCards: JobCard[] = [
     mechanic: "Nasser",
     laborCost: 220,
     partsCost: 200,
+    partsUsed: [],
     paymentStatus: "paid",
     notes: "Regular service",
     archived: false,
+    stockDeducted: true,
+    deductedParts: [],
   },
   {
     id: 3,
@@ -327,9 +396,12 @@ const initialJobCards: JobCard[] = [
     mechanic: "Faisal",
     laborCost: 500,
     partsCost: 700,
+    partsUsed: [],
     paymentStatus: "partial",
     notes: "Suspension repair",
     archived: false,
+    stockDeducted: true,
+    deductedParts: [],
   },
   {
     id: 4,
@@ -346,9 +418,12 @@ const initialJobCards: JobCard[] = [
     mechanic: "Omar",
     laborCost: 180,
     partsCost: 140,
+    partsUsed: [],
     paymentStatus: "paid",
     notes: "AC diagnosis",
     archived: false,
+    stockDeducted: true,
+    deductedParts: [],
   },
   {
     id: 5,
@@ -365,9 +440,12 @@ const initialJobCards: JobCard[] = [
     mechanic: "Majed",
     laborCost: 390,
     partsCost: 250,
+    partsUsed: [],
     paymentStatus: "unpaid",
     notes: "Transmission check",
     archived: false,
+    stockDeducted: false,
+    deductedParts: [],
   },
   {
     id: 6,
@@ -384,9 +462,12 @@ const initialJobCards: JobCard[] = [
     mechanic: "Yousef",
     laborCost: 480,
     partsCost: 500,
+    partsUsed: [],
     paymentStatus: "paid",
     notes: "Fleet van service",
     archived: false,
+    stockDeducted: true,
+    deductedParts: [],
   },
 ];
 
@@ -400,7 +481,136 @@ const emptyJobCardForm: JobCardForm = {
   mechanic: "",
   laborCost: "0",
   partsCost: "0",
+  partsUsed: [],
   paymentStatus: "unpaid",
+  notes: "",
+};
+
+const initialInventoryItems: InventoryItem[] = [
+  {
+    id: 1,
+    itemName: "Engine Oil",
+    arabicItemName: "زيت المحرك",
+    category: "Lubricants",
+    sku: "OIL-5W30-4L",
+    brand: "Shell",
+    supplierName: "Gulf Auto Supplies",
+    itemType: "stock",
+    stockQuantity: 18,
+    unitType: "liter",
+    costPrice: 32,
+    sellingPrice: 48,
+    minimumStock: 12,
+    location: "A1",
+    notes: "Synthetic 5W-30 oil",
+    archived: false,
+  },
+  {
+    id: 2,
+    itemName: "Oil Filter",
+    arabicItemName: "فلتر زيت",
+    category: "Filters",
+    sku: "FLT-OIL-TY01",
+    brand: "Denso",
+    supplierName: "Riyadh Parts Co.",
+    itemType: "stock",
+    stockQuantity: 9,
+    unitType: "piece",
+    costPrice: 22,
+    sellingPrice: 38,
+    minimumStock: 10,
+    location: "B2",
+    notes: "Common Toyota fitment",
+    archived: false,
+  },
+  {
+    id: 3,
+    itemName: "Air Filter",
+    arabicItemName: "فلتر هواء",
+    category: "Filters",
+    sku: "FLT-AIR-HY02",
+    brand: "Mann Filter",
+    supplierName: "Jeddah Auto Trading",
+    itemType: "stock",
+    stockQuantity: 14,
+    unitType: "piece",
+    costPrice: 28,
+    sellingPrice: 50,
+    minimumStock: 8,
+    location: "B3",
+    notes: "Sedan and SUV stock",
+    archived: false,
+  },
+  {
+    id: 4,
+    itemName: "Brake Pads",
+    arabicItemName: "فحمات فرامل",
+    category: "Brake System",
+    sku: "BRK-PAD-FR01",
+    brand: "Brembo",
+    supplierName: "Eastern Brake Supply",
+    itemType: "stock",
+    stockQuantity: 5,
+    unitType: "set",
+    costPrice: 145,
+    sellingPrice: 230,
+    minimumStock: 6,
+    location: "C1",
+    notes: "Front axle set",
+    archived: false,
+  },
+  {
+    id: 5,
+    itemName: "Spark Plug",
+    arabicItemName: "بواجي",
+    category: "Ignition",
+    sku: "IGN-SPK-NG01",
+    brand: "NGK",
+    supplierName: "Riyadh Parts Co.",
+    itemType: "stock",
+    stockQuantity: 36,
+    unitType: "piece",
+    costPrice: 18,
+    sellingPrice: 32,
+    minimumStock: 16,
+    location: "D4",
+    notes: "Iridium plug",
+    archived: false,
+  },
+  {
+    id: 6,
+    itemName: "Wheel Alignment Service",
+    arabicItemName: "خدمة ميزان الأذرعة",
+    category: "Services",
+    sku: "SRV-ALIGN-001",
+    brand: "CAR DC9",
+    supplierName: "In-house",
+    itemType: "service",
+    stockQuantity: 1,
+    unitType: "set",
+    costPrice: 0,
+    sellingPrice: 150,
+    minimumStock: 0,
+    location: "Service Bay",
+    notes: "Service item for billing later",
+    archived: false,
+  },
+];
+
+const emptyInventoryForm: InventoryForm = {
+  itemName: "",
+  arabicItemName: "",
+  category: "",
+  sku: "",
+  brand: "",
+  supplierName: "",
+  itemType: "stock",
+  stockQuantity: "0",
+  unitType: "piece",
+  costPrice: "0",
+  sellingPrice: "0",
+  minimumStock: "0",
+  location: "",
   notes: "",
 };
 
@@ -426,6 +636,15 @@ export default function Home() {
   const [editingJobCardId, setEditingJobCardId] = useState<number | null>(null);
   const [jobCardTab, setJobCardTab] = useState<RecordTab>("active");
   const [jobCardSearch, setJobCardSearch] = useState("");
+  const [inventoryItems, setInventoryItems] =
+    useState<InventoryItem[]>(initialInventoryItems);
+  const [inventorySearch, setInventorySearch] = useState("");
+  const [inventoryTab, setInventoryTab] = useState<RecordTab>("active");
+  const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [inventoryForm, setInventoryForm] =
+    useState<InventoryForm>(emptyInventoryForm);
+  const [editingInventoryItemId, setEditingInventoryItemId] =
+    useState<number | null>(null);
   const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
 
   const isArabic = locale === "ar";
@@ -492,12 +711,53 @@ export default function Home() {
     });
   }, [jobCardSearch, jobCards, jobCardTab]);
 
+  const filteredInventoryItems = useMemo(() => {
+    const query = inventorySearch.trim().toLowerCase();
+
+    return inventoryItems.filter((item) => {
+      if (item.archived !== (inventoryTab === "archived")) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return [
+        item.itemName,
+        item.arabicItemName,
+        item.category,
+        item.sku,
+        item.brand,
+        item.supplierName,
+      ].some((value) => value.toLowerCase().includes(query));
+    });
+  }, [inventoryItems, inventorySearch, inventoryTab]);
+
   const getVehicleJobs = (vehicleId: number) => {
     return jobCards.filter((jobCard) => jobCard.vehicleId === vehicleId);
   };
 
-  const getLatestJob = (vehicleId: number) => {
-    return getVehicleJobs(vehicleId).toSorted((firstJob, secondJob) =>
+  const getServiceSummaryJobs = (vehicleId: number) => {
+    return getVehicleJobs(vehicleId).filter(
+      (jobCard) => !jobCard.archived && jobCard.status === "completed",
+    );
+  };
+
+  const getActiveJob = (vehicleId: number) => {
+    return getVehicleJobs(vehicleId).find(
+      (jobCard) => !jobCard.archived && activeJobStatuses.includes(jobCard.status),
+    );
+  };
+
+  const getLatestVehicleJob = (vehicleId: number) => {
+    const activeJob = getActiveJob(vehicleId);
+
+    if (activeJob) {
+      return activeJob;
+    }
+
+    return getServiceSummaryJobs(vehicleId).toSorted((firstJob, secondJob) =>
       secondJob.date.localeCompare(firstJob.date),
     )[0];
   };
@@ -541,6 +801,112 @@ export default function Home() {
   const parsePositiveNumber = (value: string) => {
     const parsedValue = Number(value);
     return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+  };
+
+  const parseWholeNumber = (value: string) => {
+    const parsedValue = Math.floor(Number(value));
+    return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+  };
+
+  const getTodayInputValue = () => new Date().toISOString().slice(0, 10);
+
+  const getNextJobNumber = () => {
+    const highestJobNumber = jobCards.reduce((highestNumber, jobCard) => {
+      const parsedNumber = Number(jobCard.jobNumber.replace("JC-", ""));
+      return Number.isFinite(parsedNumber)
+        ? Math.max(highestNumber, parsedNumber)
+        : highestNumber;
+    }, 1000);
+
+    return `JC-${highestJobNumber + 1}`;
+  };
+
+  const getJobPartsFromForm = () => {
+    return jobCardForm.partsUsed.reduce<JobPart[]>((parts, partLine) => {
+      const inventoryItem = inventoryItems.find(
+        (item) => item.id === Number(partLine.inventoryItemId),
+      );
+      const quantity = parsePositiveNumber(partLine.quantity);
+
+      if (!inventoryItem || quantity <= 0) {
+        return parts;
+      }
+
+      const unitSellingPrice = parsePositiveNumber(partLine.unitSellingPrice);
+
+      return [
+        ...parts,
+        {
+          id: inventoryItem.id,
+          rowId: partLine.rowId,
+          inventoryItemId: inventoryItem.id,
+          itemName: inventoryItem.itemName,
+          arabicItemName: inventoryItem.arabicItemName,
+          quantity,
+          unitSellingPrice,
+          lineTotal: quantity * unitSellingPrice,
+          itemType: inventoryItem.itemType,
+        },
+      ];
+    }, []);
+  };
+
+  const getInsufficientStockItemName = (partsUsed: JobPart[]) => {
+    const usedQuantities = partsUsed.reduce<Record<number, number>>((quantities, part) => {
+      if (part.itemType === "service") {
+        return quantities;
+      }
+
+      return {
+        ...quantities,
+        [part.inventoryItemId]:
+          (quantities[part.inventoryItemId] ?? 0) + part.quantity,
+      };
+    }, {});
+
+    const insufficientItemId = Object.entries(usedQuantities).find(
+      ([itemId, quantity]) => {
+        const inventoryItem = inventoryItems.find((item) => item.id === Number(itemId));
+        return inventoryItem ? quantity > inventoryItem.stockQuantity : false;
+      },
+    )?.[0];
+
+    return insufficientItemId
+      ? inventoryItems.find((item) => item.id === Number(insufficientItemId))?.itemName
+      : undefined;
+  };
+
+  const hasDuplicateJobParts = (partsUsed: JobPart[]) => {
+    const selectedItemIds = partsUsed.map((part) => part.inventoryItemId);
+    return new Set(selectedItemIds).size !== selectedItemIds.length;
+  };
+
+  const getStockDeductionQuantities = (partsUsed: JobPart[]) => {
+    return partsUsed.reduce<Record<number, number>>((quantities, part) => {
+      if (part.itemType === "service") {
+        return quantities;
+      }
+
+      return {
+        ...quantities,
+        [part.inventoryItemId]:
+          (quantities[part.inventoryItemId] ?? 0) + part.quantity,
+      };
+    }, {});
+  };
+
+  const deductJobPartsFromStock = (partsUsed: JobPart[]) => {
+    const usedQuantities = getStockDeductionQuantities(partsUsed);
+
+    setInventoryItems((currentItems) =>
+      currentItems.map((item) => ({
+        ...item,
+        stockQuantity: Math.max(
+          0,
+          item.stockQuantity - (usedQuantities[item.id] ?? 0),
+        ),
+      })),
+    );
   };
 
   const showToast = (translationKey: string) => {
@@ -717,14 +1083,33 @@ export default function Home() {
   };
 
   const startJobForVehicle = (vehicle: Vehicle) => {
+    const activeJob = getActiveJob(vehicle.id);
+
+    if (activeJob) {
+      openJobCardModal(activeJob);
+      setActiveSection("jobCards");
+      setJobCardTab("active");
+      return;
+    }
+
     setJobCardForm({
       ...emptyJobCardForm,
       vehicleId: String(vehicle.id),
-      jobNumber: `JC-${Date.now().toString().slice(-6)}`,
+      jobNumber: getNextJobNumber(),
+      date: getTodayInputValue(),
+      status: "inWorkshop",
+      paymentStatus: "unpaid",
     });
     setEditingJobCardId(null);
     setActiveSection("jobCards");
+    setJobCardTab("active");
     setIsJobCardModalOpen(true);
+  };
+
+  const viewActiveJobForVehicle = (jobCard: JobCard) => {
+    openJobCardModal(jobCard);
+    setActiveSection("jobCards");
+    setJobCardTab("active");
   };
 
   const historyVehicle = vehicles.find((vehicle) => vehicle.id === historyVehicleId);
@@ -742,6 +1127,12 @@ export default function Home() {
         mechanic: jobCard.mechanic,
         laborCost: String(jobCard.laborCost),
         partsCost: String(jobCard.partsCost),
+        partsUsed: jobCard.partsUsed.map((part, index) => ({
+          rowId: part.rowId || `saved-${jobCard.id}-${part.inventoryItemId}-${index}`,
+          inventoryItemId: String(part.inventoryItemId),
+          quantity: String(part.quantity),
+          unitSellingPrice: String(part.unitSellingPrice),
+        })),
         paymentStatus: jobCard.paymentStatus,
         notes: jobCard.notes,
       });
@@ -749,7 +1140,8 @@ export default function Home() {
       setEditingJobCardId(null);
       setJobCardForm({
         ...emptyJobCardForm,
-        jobNumber: `JC-${Date.now().toString().slice(-6)}`,
+        jobNumber: getNextJobNumber(),
+        date: getTodayInputValue(),
       });
     }
 
@@ -773,9 +1165,41 @@ export default function Home() {
       return;
     }
 
+    const conflictingActiveJob = getActiveJob(selectedVehicle.id);
+
+    if (
+      activeJobStatuses.includes(jobCardForm.status) &&
+      conflictingActiveJob &&
+      conflictingActiveJob.id !== editingJobCardId
+    ) {
+      showToast("toast.activeJobExists");
+      return;
+    }
+
     const selectedCustomer = customers.find(
       (customer) => customer.id === selectedVehicle.customerId,
     );
+    const existingJobCard = editingJobCardId
+      ? jobCards.find((jobCard) => jobCard.id === editingJobCardId)
+      : undefined;
+    const partsUsed = getJobPartsFromForm();
+    const partsCost = partsUsed.reduce((total, part) => total + part.lineTotal, 0);
+    const isSavingCompletedJob = jobCardForm.status === "completed";
+    const shouldDeductStock =
+      isSavingCompletedJob && existingJobCard?.stockDeducted !== true;
+    const insufficientStockItemName = isSavingCompletedJob
+      ? getInsufficientStockItemName(partsUsed)
+      : undefined;
+
+    if (insufficientStockItemName) {
+      showToast("toast.insufficientStock");
+      return;
+    }
+
+    if (hasDuplicateJobParts(partsUsed)) {
+      showToast("toast.duplicateParts");
+      return;
+    }
 
     const jobCardValues = {
       jobNumber: jobCardForm.jobNumber.trim(),
@@ -790,9 +1214,14 @@ export default function Home() {
       workPerformed: jobCardForm.workPerformed.trim(),
       mechanic: jobCardForm.mechanic.trim(),
       laborCost: parsePositiveNumber(jobCardForm.laborCost),
-      partsCost: parsePositiveNumber(jobCardForm.partsCost),
+      partsCost,
+      partsUsed,
       paymentStatus: jobCardForm.paymentStatus,
       notes: jobCardForm.notes.trim(),
+      stockDeducted: existingJobCard?.stockDeducted === true || shouldDeductStock,
+      deductedParts: shouldDeductStock
+        ? partsUsed.filter((part) => part.itemType === "stock")
+        : existingJobCard?.deductedParts ?? [],
     };
 
     if (editingJobCardId) {
@@ -807,6 +1236,9 @@ export default function Home() {
             : jobCard,
         ),
       );
+      if (shouldDeductStock) {
+        deductJobPartsFromStock(partsUsed);
+      }
       closeJobCardModal();
       return;
     }
@@ -818,10 +1250,21 @@ export default function Home() {
     };
 
     setJobCards((currentJobCards) => [nextJobCard, ...currentJobCards]);
+    if (shouldDeductStock) {
+      deductJobPartsFromStock(partsUsed);
+    }
     closeJobCardModal();
   };
 
   const setJobCardArchived = (jobCardId: number, archived: boolean) => {
+    const targetJobCard = jobCards.find((jobCard) => jobCard.id === jobCardId);
+    const activeJob = targetJobCard ? getActiveJob(targetJobCard.vehicleId) : undefined;
+
+    if (!archived && activeJob && activeJob.id !== jobCardId) {
+      showToast("toast.activeJobExists");
+      return;
+    }
+
     setJobCards((currentJobCards) =>
       currentJobCards.map((jobCard) =>
         jobCard.id === jobCardId
@@ -836,12 +1279,96 @@ export default function Home() {
     showToast(archived ? "toast.recordArchived" : "toast.recordRestored");
   };
 
+  const openInventoryModal = (item?: InventoryItem) => {
+    if (item) {
+      setEditingInventoryItemId(item.id);
+      setInventoryForm({
+        itemName: item.itemName,
+        arabicItemName: item.arabicItemName,
+        category: item.category,
+        sku: item.sku,
+        brand: item.brand,
+        supplierName: item.supplierName,
+        itemType: item.itemType,
+        stockQuantity: String(item.stockQuantity),
+        unitType: item.unitType,
+        costPrice: String(item.costPrice),
+        sellingPrice: String(item.sellingPrice),
+        minimumStock: String(item.minimumStock),
+        location: item.location,
+        notes: item.notes,
+      });
+    } else {
+      setEditingInventoryItemId(null);
+      setInventoryForm(emptyInventoryForm);
+    }
+
+    setIsInventoryModalOpen(true);
+  };
+
+  const closeInventoryModal = () => {
+    setIsInventoryModalOpen(false);
+    setInventoryForm(emptyInventoryForm);
+    setEditingInventoryItemId(null);
+  };
+
+  const getInventoryFormValues = () => ({
+    itemName: inventoryForm.itemName.trim(),
+    arabicItemName: inventoryForm.arabicItemName.trim(),
+    category: inventoryForm.category.trim(),
+    sku: inventoryForm.sku.trim(),
+    brand: inventoryForm.brand.trim(),
+    supplierName: inventoryForm.supplierName.trim(),
+    itemType: inventoryForm.itemType,
+    stockQuantity: parseWholeNumber(inventoryForm.stockQuantity),
+    unitType: inventoryForm.unitType,
+    costPrice: parsePositiveNumber(inventoryForm.costPrice),
+    sellingPrice: parsePositiveNumber(inventoryForm.sellingPrice),
+    minimumStock: parseWholeNumber(inventoryForm.minimumStock),
+    location: inventoryForm.location.trim(),
+    notes: inventoryForm.notes.trim(),
+  });
+
+  const saveInventoryItem = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const inventoryValues = getInventoryFormValues();
+
+    if (editingInventoryItemId) {
+      setInventoryItems((currentItems) =>
+        currentItems.map((item) =>
+          item.id === editingInventoryItemId ? { ...item, ...inventoryValues } : item,
+        ),
+      );
+      closeInventoryModal();
+      return;
+    }
+
+    const nextItem: InventoryItem = {
+      id: Date.now(),
+      ...inventoryValues,
+      archived: false,
+    };
+
+    setInventoryItems((currentItems) => [nextItem, ...currentItems]);
+    closeInventoryModal();
+  };
+
+  const setInventoryItemArchived = (itemId: number, archived: boolean) => {
+    setInventoryItems((currentItems) =>
+      currentItems.map((item) =>
+        item.id === itemId ? { ...item, archived } : item,
+      ),
+    );
+    showToast(archived ? "toast.recordArchived" : "toast.recordRestored");
+  };
+
   const sectionHeaderKeys: Record<SectionKey, { title: string; subtitle: string }> = {
     dashboard: { title: "topbar.title", subtitle: "topbar.subtitle" },
     customers: { title: "customers.title", subtitle: "customers.subtitle" },
     vehicles: { title: "vehicles.title", subtitle: "vehicles.subtitle" },
     jobCards: { title: "jobCards.title", subtitle: "jobCards.subtitle" },
-    inventory: { title: "topbar.title", subtitle: "topbar.subtitle" },
+    inventory: { title: "inventory.title", subtitle: "inventory.subtitle" },
     purchases: { title: "topbar.title", subtitle: "topbar.subtitle" },
     expenses: { title: "topbar.title", subtitle: "topbar.subtitle" },
     invoices: { title: "topbar.title", subtitle: "topbar.subtitle" },
@@ -1006,9 +1533,11 @@ export default function Home() {
                   activeTab={vehicleTab}
                   onTabChange={setVehicleTab}
                   onUpdateForm={setVehicleForm}
-                  getLatestJob={getLatestJob}
-                  getVehicleJobs={getVehicleJobs}
+                  getActiveJob={getActiveJob}
+                  getLatestVehicleJob={getLatestVehicleJob}
+                  getServiceSummaryJobs={getServiceSummaryJobs}
                   onStartJob={startJobForVehicle}
+                  onViewActiveJob={viewActiveJobForVehicle}
                   t={t}
                   vehicleForm={vehicleForm}
                   vehicleSearch={vehicleSearch}
@@ -1043,7 +1572,27 @@ export default function Home() {
                 onTabChange={setJobCardTab}
                 onUpdateForm={setJobCardForm}
                 t={t}
+                inventoryItems={inventoryItems}
                 vehicles={vehicles}
+              />
+            ) : activeSection === "inventory" ? (
+              <InventorySection
+                activeTab={inventoryTab}
+                formatMoney={formatMoney}
+                formatNumber={formatNumber}
+                inventoryForm={inventoryForm}
+                inventoryItems={filteredInventoryItems}
+                inventorySearch={inventorySearch}
+                isEditing={editingInventoryItemId !== null}
+                isModalOpen={isInventoryModalOpen}
+                onArchivedChange={setInventoryItemArchived}
+                onCloseModal={closeInventoryModal}
+                onOpenModal={openInventoryModal}
+                onSave={saveInventoryItem}
+                onSearchChange={setInventorySearch}
+                onTabChange={setInventoryTab}
+                onUpdateForm={setInventoryForm}
+                t={t}
               />
             ) : (
               <DashboardSection formatCardValue={formatCardValue} t={t} />
@@ -1383,7 +1932,7 @@ function CustomerModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
       <form
         onSubmit={onSave}
-        className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-w-lg"
+        className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-w-4xl"
       >
         <div className="shrink-0 border-b border-slate-100 p-5">
           <div className="flex items-start justify-between gap-4">
@@ -1499,9 +2048,11 @@ function VehiclesSection({
   onViewHistory,
   onTabChange,
   onUpdateForm,
-  getLatestJob,
-  getVehicleJobs,
+  getActiveJob,
+  getLatestVehicleJob,
+  getServiceSummaryJobs,
   onStartJob,
+  onViewActiveJob,
   t,
   vehicleForm,
   vehicleSearch,
@@ -1520,9 +2071,11 @@ function VehiclesSection({
   onViewHistory: (vehicle: Vehicle) => void;
   onTabChange: (value: RecordTab) => void;
   onUpdateForm: (value: VehicleForm) => void;
-  getLatestJob: (vehicleId: number) => JobCard | undefined;
-  getVehicleJobs: (vehicleId: number) => JobCard[];
+  getActiveJob: (vehicleId: number) => JobCard | undefined;
+  getLatestVehicleJob: (vehicleId: number) => JobCard | undefined;
+  getServiceSummaryJobs: (vehicleId: number) => JobCard[];
   onStartJob: (vehicle: Vehicle) => void;
+  onViewActiveJob: (jobCard: JobCard) => void;
   t: (key: string) => string;
   vehicleForm: VehicleForm;
   vehicleSearch: string;
@@ -1581,8 +2134,9 @@ function VehiclesSection({
       {vehicles.length > 0 ? (
         <section className="grid gap-4 xl:grid-cols-2">
           {vehicles.map((vehicle) => {
-            const vehicleJobs = getVehicleJobs(vehicle.id);
-            const latestJob = getLatestJob(vehicle.id);
+            const serviceSummaryJobs = getServiceSummaryJobs(vehicle.id);
+            const latestVehicleJob = getLatestVehicleJob(vehicle.id);
+            const activeJob = getActiveJob(vehicle.id);
 
             return (
               <article
@@ -1603,7 +2157,7 @@ function VehiclesSection({
                       {t("common.archived")}
                     </span>
                   ) : (
-                    <VehicleStatusBadge status={latestJob?.status ?? "active"} t={t} />
+                    <VehicleStatusBadge status={latestVehicleJob?.status ?? "active"} t={t} />
                   )}
                 </div>
 
@@ -1633,19 +2187,19 @@ function VehiclesSection({
                 <dl className="mt-4 grid gap-4 sm:grid-cols-3">
                   <CustomerField
                     label={t("vehicles.fields.totalVisits")}
-                    value={formatNumber(vehicleJobs.length)}
+                    value={formatNumber(serviceSummaryJobs.length)}
                   />
                   <CustomerField
                     label={t("vehicles.fields.lastServiceDate")}
-                    value={latestJob ? formatDate(latestJob.date) : t("common.notAvailable")}
+                    value={latestVehicleJob ? formatDate(latestVehicleJob.date) : t("common.notAvailable")}
                   />
                   <CustomerField
                     label={t("vehicles.fields.currentStatus")}
-                    value={latestJob ? t(`vehicles.status.${latestJob.status}`) : t("common.notAvailable")}
+                    value={latestVehicleJob ? t(`vehicles.status.${latestVehicleJob.status}`) : t("common.notAvailable")}
                   />
                   <CustomerField
                     label={t("vehicles.fields.lastWorkPerformed")}
-                    value={latestJob?.workPerformed || t("common.notAvailable")}
+                    value={latestVehicleJob?.workPerformed || t("common.notAvailable")}
                   />
                 </dl>
               </section>
@@ -1654,10 +2208,16 @@ function VehiclesSection({
                 {!vehicle.archived ? (
                   <button
                     type="button"
-                    onClick={() => onStartJob(vehicle)}
-                    className="h-10 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
+                    onClick={() =>
+                      activeJob ? onViewActiveJob(activeJob) : onStartJob(vehicle)
+                    }
+                    className={`h-10 rounded-md px-3 text-sm font-semibold text-white transition ${
+                      activeJob
+                        ? "bg-amber-600 hover:bg-amber-700"
+                        : "bg-emerald-700 hover:bg-emerald-800"
+                    }`}
                   >
-                    {t("vehicles.startJob")}
+                    {t(activeJob ? "vehicles.viewActiveJob" : "vehicles.startJob")}
                   </button>
                 ) : null}
                 <button
@@ -1733,8 +2293,8 @@ function VehicleStatusBadge({
   const statusClasses: Record<VehicleDisplayStatus, string> = {
     active: "bg-emerald-50 text-emerald-800",
     inWorkshop: "bg-amber-50 text-amber-800",
-    completed: "bg-slate-100 text-slate-700",
-    cancelled: "bg-slate-100 text-slate-600",
+    completed: "bg-emerald-50 text-emerald-800",
+    cancelled: "bg-rose-50 text-rose-700",
   };
 
   return (
@@ -1742,6 +2302,28 @@ function VehicleStatusBadge({
       className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${statusClasses[status]}`}
     >
       {t(`vehicles.status.${status}`)}
+    </span>
+  );
+}
+
+function PaymentStatusBadge({
+  status,
+  t,
+}: {
+  status: PaymentStatus;
+  t: (key: string) => string;
+}) {
+  const statusClasses: Record<PaymentStatus, string> = {
+    paid: "bg-emerald-50 text-emerald-800",
+    partial: "bg-amber-50 text-amber-800",
+    unpaid: "bg-rose-50 text-rose-700",
+  };
+
+  return (
+    <span
+      className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${statusClasses[status]}`}
+    >
+      {t(`jobCards.paymentStatus.${status}`)}
     </span>
   );
 }
@@ -1953,15 +2535,34 @@ function ServiceHistoryModal({
                       label={t("jobCards.fields.mechanic")}
                       value={jobCard.mechanic}
                     />
-                    <CustomerField
-                      label={t("jobCards.fields.paymentStatus")}
-                      value={t(`jobCards.paymentStatus.${jobCard.paymentStatus}`)}
-                    />
+                    <div>
+                      <dt className="text-xs font-medium uppercase text-slate-400">
+                        {t("jobCards.fields.paymentStatus")}
+                      </dt>
+                      <dd className="mt-1">
+                        <PaymentStatusBadge status={jobCard.paymentStatus} t={t} />
+                      </dd>
+                    </div>
                     <CustomerField
                       label={t("jobCards.fields.totalAmount")}
                       value={formatMoney(jobCard.laborCost + jobCard.partsCost)}
                     />
                   </dl>
+                  {jobCard.partsUsed.length > 0 ? (
+                    <div className="mt-4 rounded-lg bg-slate-50 p-3">
+                      <p className="text-xs font-medium uppercase text-slate-400">
+                        {t("jobCards.parts.summary")}
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-slate-800">
+                        {jobCard.partsUsed
+                          .map(
+                            (part) =>
+                              `${part.itemName} x ${part.quantity} (${formatMoney(part.lineTotal)})`,
+                          )
+                          .join(", ")}
+                      </p>
+                    </div>
+                  ) : null}
                 </article>
               ))}
             </div>
@@ -1984,6 +2585,7 @@ function ServiceHistoryModal({
 function JobCardsSection({
   formatDate,
   formatMoney,
+  inventoryItems,
   isEditing,
   isModalOpen,
   jobCardForm,
@@ -2002,6 +2604,7 @@ function JobCardsSection({
 }: {
   formatDate: (value: string) => string;
   formatMoney: (value: number) => string;
+  inventoryItems: InventoryItem[];
   isEditing: boolean;
   isModalOpen: boolean;
   jobCardForm: JobCardForm;
@@ -2106,17 +2709,29 @@ function JobCardsSection({
               </dl>
 
               <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-medium uppercase text-slate-400">
-                    {t("jobCards.fields.totalAmount")}
-                  </p>
-                  <p className="mt-1 text-lg font-semibold text-slate-950">
-                    {formatMoney(jobCard.laborCost + jobCard.partsCost)}
-                  </p>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <CustomerField
+                    label={t("jobCards.fields.laborCost")}
+                    value={formatMoney(jobCard.laborCost)}
+                  />
+                  <CustomerField
+                    label={t("jobCards.fields.partsCost")}
+                    value={formatMoney(jobCard.partsCost)}
+                  />
+                  <CustomerField
+                    label={t("jobCards.parts.partsCount")}
+                    value={String(jobCard.partsUsed.length)}
+                  />
+                  <div>
+                    <p className="text-xs font-medium uppercase text-slate-400">
+                      {t("jobCards.fields.totalAmount")}
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-slate-950">
+                      {formatMoney(jobCard.laborCost + jobCard.partsCost)}
+                    </p>
+                  </div>
                 </div>
-                <span className="w-fit rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-800">
-                  {t(`jobCards.paymentStatus.${jobCard.paymentStatus}`)}
-                </span>
+                <PaymentStatusBadge status={jobCard.paymentStatus} t={t} />
               </div>
 
               <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
@@ -2154,8 +2769,10 @@ function JobCardsSection({
       )}
 
       {isModalOpen ? (
-        <JobCardModal
-          isEditing={isEditing}
+          <JobCardModal
+            formatMoney={formatMoney}
+            inventoryItems={inventoryItems}
+            isEditing={isEditing}
           jobCardForm={jobCardForm}
           onClose={onCloseModal}
           onSave={onSave}
@@ -2169,6 +2786,8 @@ function JobCardsSection({
 }
 
 function JobCardModal({
+  formatMoney,
+  inventoryItems,
   isEditing,
   jobCardForm,
   onClose,
@@ -2177,6 +2796,8 @@ function JobCardModal({
   t,
   vehicles,
 }: {
+  formatMoney: (value: number) => string;
+  inventoryItems: InventoryItem[];
   isEditing: boolean;
   jobCardForm: JobCardForm;
   onClose: () => void;
@@ -2185,11 +2806,69 @@ function JobCardModal({
   t: (key: string) => string;
   vehicles: Vehicle[];
 }) {
+  const [duplicatePartRowId, setDuplicatePartRowId] = useState<string | null>(null);
+  const selectedVehicle = vehicles.find(
+    (vehicle) => vehicle.id === Number(jobCardForm.vehicleId),
+  );
+  const getFormCost = (value: string) => {
+    const parsedValue = Number(value);
+    return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+  };
+  const activeInventoryItems = inventoryItems.filter((item) => !item.archived);
+  const getPartLineTotal = (partLine: JobPartFormLine) =>
+    getFormCost(partLine.quantity) * getFormCost(partLine.unitSellingPrice);
+  const partsTotal = jobCardForm.partsUsed.reduce(
+    (total, partLine) => total + getPartLineTotal(partLine),
+    0,
+  );
+  const totalAmount = getFormCost(jobCardForm.laborCost) + partsTotal;
+  const selectedInventoryItemIds = jobCardForm.partsUsed
+    .map((partLine) => partLine.inventoryItemId)
+    .filter(Boolean);
+  const createPartRowId = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `part-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const addPartLine = () => {
+    onUpdateForm({
+      ...jobCardForm,
+      partsUsed: [
+        ...jobCardForm.partsUsed,
+        {
+          rowId: createPartRowId(),
+          inventoryItemId: "",
+          quantity: "1",
+          unitSellingPrice: "0",
+        },
+      ],
+    });
+  };
+
+  const updatePartLine = (
+    rowId: string,
+    nextValues: Partial<Omit<JobPartFormLine, "rowId">>,
+  ) => {
+    onUpdateForm({
+      ...jobCardForm,
+      partsUsed: jobCardForm.partsUsed.map((partLine) =>
+        partLine.rowId === rowId ? { ...partLine, ...nextValues } : partLine,
+      ),
+    });
+  };
+
+  const removePartLine = (rowId: string) => {
+    onUpdateForm({
+      ...jobCardForm,
+      partsUsed: jobCardForm.partsUsed.filter((partLine) => partLine.rowId !== rowId),
+    });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
       <form
         onSubmit={onSave}
-        className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-w-lg"
+        className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-w-4xl"
       >
         <div className="shrink-0 border-b border-slate-100 p-5">
           <div className="flex items-start justify-between gap-4">
@@ -2241,6 +2920,23 @@ function JobCardModal({
                 ))}
               </select>
             </label>
+
+            {selectedVehicle ? (
+              <section className="grid gap-4 rounded-lg bg-slate-50 p-4 sm:grid-cols-3">
+                <CustomerField
+                  label={t("jobCards.fields.customerName")}
+                  value={selectedVehicle.ownerName}
+                />
+                <CustomerField
+                  label={t("jobCards.fields.vehicleName")}
+                  value={`${selectedVehicle.make} ${selectedVehicle.model}`}
+                />
+                <CustomerField
+                  label={t("jobCards.fields.plateNumber")}
+                  value={selectedVehicle.plateNumber}
+                />
+              </section>
+            ) : null}
 
             <FormField
               inputType="date"
@@ -2305,23 +3001,242 @@ function JobCardModal({
               required
             />
 
-            <FormField
-              inputType="number"
+            <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    {t("jobCards.parts.title")}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {t("jobCards.parts.subtitle")}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addPartLine}
+                  className="h-10 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                >
+                  {t("jobCards.parts.addPart")}
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {jobCardForm.partsUsed.length > 0 ? (
+                  <div className="grid gap-3">
+                    <div className="hidden rounded-md bg-white px-3 py-2 text-xs font-semibold uppercase text-slate-400 lg:grid lg:grid-cols-[1.5fr_0.8fr_0.7fr_0.9fr_0.9fr_auto] lg:gap-3">
+                      <span>{t("jobCards.parts.inventoryItem")}</span>
+                      <span>{t("jobCards.parts.availableStockLabel")}</span>
+                      <span>{t("jobCards.parts.quantity")}</span>
+                      <span>{t("jobCards.parts.unitSellingPrice")}</span>
+                      <span>{t("jobCards.parts.lineTotal")}</span>
+                      <span className="text-end">{t("jobCards.parts.actions")}</span>
+                    </div>
+
+                    {jobCardForm.partsUsed.map((partLine) => {
+                      const selectedItem = inventoryItems.find(
+                        (item) => item.id === Number(partLine.inventoryItemId),
+                      );
+                      const quantity = getFormCost(partLine.quantity);
+                      const showStockWarning =
+                        selectedItem?.itemType === "stock" &&
+                        quantity > selectedItem.stockQuantity;
+                      const showDuplicateWarning =
+                        duplicatePartRowId === partLine.rowId ||
+                        (Boolean(partLine.inventoryItemId) &&
+                          selectedInventoryItemIds.filter(
+                            (itemId) => itemId === partLine.inventoryItemId,
+                          ).length > 1);
+
+                      return (
+                        <div
+                          key={partLine.rowId}
+                          className="rounded-lg border border-slate-200 bg-white p-3"
+                        >
+                          <div className="mb-3 flex flex-col gap-2 lg:hidden">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-950">
+                                {selectedItem?.itemName ?? t("jobCards.parts.emptyRow")}
+                              </p>
+                              <p className="mt-1 text-sm text-slate-500">
+                                {selectedItem?.arabicItemName || t("common.notAvailable")}
+                              </p>
+                              {selectedItem ? (
+                                <p className="mt-1 text-xs font-medium text-slate-500">
+                                  {selectedItem.sku}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 lg:grid-cols-[1.5fr_0.8fr_0.7fr_0.9fr_0.9fr_auto] lg:items-end">
+                            <label className="block">
+                              <span className="text-sm font-medium text-slate-700 lg:sr-only">
+                                {t("jobCards.parts.inventoryItem")}
+                              </span>
+                              <select
+                                value={partLine.inventoryItemId}
+                                onChange={(event) => {
+                                  const nextInventoryItemId = event.target.value;
+                                  const isDuplicateItem =
+                                    Boolean(nextInventoryItemId) &&
+                                    selectedInventoryItemIds.includes(nextInventoryItemId) &&
+                                    partLine.inventoryItemId !== nextInventoryItemId;
+
+                                  if (isDuplicateItem) {
+                                    setDuplicatePartRowId(partLine.rowId);
+                                    return;
+                                  }
+
+                                  const selectedInventoryItem = inventoryItems.find(
+                                    (item) => item.id === Number(nextInventoryItemId),
+                                  );
+                                  setDuplicatePartRowId(null);
+
+                                  updatePartLine(partLine.rowId, {
+                                    inventoryItemId: nextInventoryItemId,
+                                    unitSellingPrice: selectedInventoryItem
+                                      ? String(selectedInventoryItem.sellingPrice)
+                                      : "0",
+                                  });
+                                }}
+                                className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 lg:mt-0"
+                              >
+                                <option value="">
+                                  {t("jobCards.parts.selectItem")}
+                                </option>
+                                {activeInventoryItems.map((item) => (
+                                  <option
+                                    key={item.id}
+                                    value={item.id}
+                                    disabled={
+                                      selectedInventoryItemIds.includes(String(item.id)) &&
+                                      partLine.inventoryItemId !== String(item.id)
+                                    }
+                                  >
+                                    {item.itemName} - {item.sku}
+                                  </option>
+                                ))}
+                              </select>
+                              {selectedItem ? (
+                                <div className="mt-2 hidden lg:block">
+                                  <p className="text-sm font-semibold text-slate-900">
+                                    {selectedItem.itemName}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-slate-500">
+                                    {selectedItem.arabicItemName || t("common.notAvailable")}
+                                  </p>
+                                  <p className="mt-0.5 text-xs font-medium text-slate-500">
+                                    {selectedItem.sku}
+                                  </p>
+                                </div>
+                              ) : null}
+                            </label>
+
+                            <div>
+                              <p className="text-xs font-medium uppercase text-slate-400 lg:sr-only">
+                                {t("jobCards.parts.availableStockLabel")}
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-2 lg:mt-0">
+                                {selectedItem ? (
+                                  <>
+                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                                      {t(`inventory.itemTypes.${selectedItem.itemType}`)}
+                                    </span>
+                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                                      {selectedItem.itemType === "service"
+                                        ? t("jobCards.parts.noStockDeduction")
+                                        : t("jobCards.parts.availableStock").replace(
+                                            "{count}",
+                                            String(selectedItem.stockQuantity),
+                                          )}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="text-sm font-semibold text-slate-500">
+                                    {t("common.notAvailable")}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <FormField
+                              inputType="number"
+                              label={t("jobCards.parts.quantity")}
+                              min="0"
+                              value={partLine.quantity}
+                              onChange={(value) =>
+                                updatePartLine(partLine.rowId, {
+                                  quantity: value,
+                                })
+                              }
+                              placeholder={t("jobCards.parts.quantityPlaceholder")}
+                            />
+
+                            <FormField
+                              inputType="number"
+                              label={t("jobCards.parts.unitSellingPrice")}
+                              min="0"
+                              value={partLine.unitSellingPrice}
+                              onChange={(value) =>
+                                updatePartLine(partLine.rowId, {
+                                  unitSellingPrice: value,
+                                })
+                              }
+                              placeholder={t("jobCards.parts.pricePlaceholder")}
+                            />
+
+                            <div>
+                              <p className="text-xs font-medium uppercase text-slate-400 lg:sr-only">
+                                {t("jobCards.parts.lineTotal")}
+                              </p>
+                              <p className="mt-1 text-base font-semibold text-slate-950 lg:mt-0">
+                                {formatMoney(getPartLineTotal(partLine))}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => removePartLine(partLine.rowId)}
+                              className="h-10 rounded-md border border-rose-200 px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+                            >
+                              {t("common.remove")}
+                            </button>
+                          </div>
+
+                          {showStockWarning || showDuplicateWarning ? (
+                            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                              {showStockWarning ? (
+                                <span className="rounded-full bg-rose-50 px-3 py-1 font-semibold text-rose-700">
+                                  {t("jobCards.parts.stockWarning")}
+                                </span>
+                              ) : null}
+                              {showDuplicateWarning ? (
+                                <span className="rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700">
+                                  {t("jobCards.parts.duplicateWarning")}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
+                    {t("jobCards.parts.empty")}
+                  </p>
+                )}
+              </div>
+            </section>
+
+            <CustomerField
               label={t("jobCards.fields.partsCost")}
-              min="0"
-              value={jobCardForm.partsCost}
-              onChange={(value) => onUpdateForm({ ...jobCardForm, partsCost: value })}
-              placeholder={t("jobCards.form.partsCostPlaceholder")}
-              required
+              value={formatMoney(partsTotal)}
             />
 
             <CustomerField
               label={t("jobCards.fields.totalAmount")}
-              value={new Intl.NumberFormat(undefined, {
-                style: "currency",
-                currency: "SAR",
-                maximumFractionDigits: 0,
-              }).format(Number(jobCardForm.laborCost || 0) + Number(jobCardForm.partsCost || 0))}
+              value={formatMoney(totalAmount)}
             />
 
             <label className="block">
@@ -2374,6 +3289,469 @@ function JobCardModal({
             className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800"
           >
             {t("jobCards.form.save")}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function InventorySection({
+  activeTab,
+  formatMoney,
+  formatNumber,
+  inventoryForm,
+  inventoryItems,
+  inventorySearch,
+  isEditing,
+  isModalOpen,
+  onArchivedChange,
+  onCloseModal,
+  onOpenModal,
+  onSave,
+  onSearchChange,
+  onTabChange,
+  onUpdateForm,
+  t,
+}: {
+  activeTab: RecordTab;
+  formatMoney: (value: number) => string;
+  formatNumber: (value: number) => string;
+  inventoryForm: InventoryForm;
+  inventoryItems: InventoryItem[];
+  inventorySearch: string;
+  isEditing: boolean;
+  isModalOpen: boolean;
+  onArchivedChange: (itemId: number, archived: boolean) => void;
+  onCloseModal: () => void;
+  onOpenModal: (item?: InventoryItem) => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onSearchChange: (value: string) => void;
+  onTabChange: (value: RecordTab) => void;
+  onUpdateForm: (value: InventoryForm) => void;
+  t: (key: string) => string;
+}) {
+  return (
+    <>
+      <section className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-medium text-emerald-700">
+            {t(
+              activeTab === "archived"
+                ? "inventory.archivedRecordCount"
+                : "inventory.activeRecordCount",
+            ).replace("{count}", String(inventoryItems.length))}
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-normal">
+            {t("inventory.title")}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            {t("inventory.subtitle")}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onOpenModal()}
+          className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800"
+        >
+          {t("inventory.addButton")}
+        </button>
+      </section>
+
+      <section className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="flex-1">
+          <label className="sr-only" htmlFor="inventory-search">
+            {t("inventory.searchLabel")}
+          </label>
+          <input
+            id="inventory-search"
+            type="search"
+            value={inventorySearch}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={t("inventory.searchPlaceholder")}
+            className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+          />
+        </div>
+
+        <RecordTabs activeTab={activeTab} onTabChange={onTabChange} t={t} />
+      </section>
+
+      {inventoryItems.length > 0 ? (
+        <section className="grid gap-4 xl:grid-cols-2">
+          {inventoryItems.map((item) => {
+            const isLowStock = item.stockQuantity <= item.minimumStock;
+
+            return (
+              <article
+                key={item.id}
+                className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="text-xl font-semibold tracking-normal text-slate-950">
+                      {item.itemName}
+                    </h3>
+                    <p className="mt-1 text-sm font-semibold text-slate-600">
+                      {item.arabicItemName}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {item.category} - {item.sku}
+                    </p>
+                  </div>
+                  <InventoryStatusBadge archived={item.archived} t={t} />
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {isLowStock ? (
+                    <span className="w-fit rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+                      {t("inventory.lowStock")}
+                    </span>
+                  ) : null}
+                  <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                    {t(`inventory.units.${item.unitType}`)}
+                  </span>
+                  <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                    {t(`inventory.itemTypes.${item.itemType}`)}
+                  </span>
+                </div>
+
+                <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <CustomerField
+                    label={t("inventory.fields.stockQuantity")}
+                    value={formatNumber(item.stockQuantity)}
+                  />
+                  <CustomerField
+                    label={t("inventory.fields.unitType")}
+                    value={t(`inventory.units.${item.unitType}`)}
+                  />
+                  <CustomerField
+                    label={t("inventory.fields.itemType")}
+                    value={t(`inventory.itemTypes.${item.itemType}`)}
+                  />
+                  <CustomerField
+                    label={t("inventory.fields.costPrice")}
+                    value={formatMoney(item.costPrice)}
+                  />
+                  <CustomerField
+                    label={t("inventory.fields.sellingPrice")}
+                    value={formatMoney(item.sellingPrice)}
+                  />
+                  <CustomerField
+                    label={t("inventory.fields.supplierName")}
+                    value={item.supplierName}
+                  />
+                  <CustomerField
+                    label={t("inventory.fields.brand")}
+                    value={item.brand}
+                  />
+                  <CustomerField
+                    label={t("inventory.fields.minimumStock")}
+                    value={formatNumber(item.minimumStock)}
+                  />
+                  <CustomerField
+                    label={t("inventory.fields.location")}
+                    value={item.location || t("common.notAvailable")}
+                  />
+                </dl>
+
+                <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => onOpenModal(item)}
+                    className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    {t("common.viewEdit")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onArchivedChange(item.id, !item.archived)}
+                    className={`h-10 rounded-md border px-3 text-sm font-semibold transition ${
+                      item.archived
+                        ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                        : "border-amber-200 text-amber-700 hover:bg-amber-50"
+                    }`}
+                  >
+                    {t(item.archived ? "common.restore" : "common.archive")}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      ) : (
+        <section className="rounded-lg border border-dashed border-slate-300 bg-white px-5 py-12 text-center shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-950">
+            {t(
+              activeTab === "archived"
+                ? "inventory.emptyArchivedTitle"
+                : "inventory.emptyActiveTitle",
+            )}
+          </h3>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+            {t(
+              activeTab === "archived"
+                ? "inventory.emptyArchivedBody"
+                : "inventory.emptyActiveBody",
+            )}
+          </p>
+        </section>
+      )}
+
+      {isModalOpen ? (
+        <InventoryModal
+          inventoryForm={inventoryForm}
+          isEditing={isEditing}
+          onClose={onCloseModal}
+          onSave={onSave}
+          onUpdateForm={onUpdateForm}
+          t={t}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function InventoryStatusBadge({
+  archived,
+  t,
+}: {
+  archived: boolean;
+  t: (key: string) => string;
+}) {
+  return (
+    <span
+      className={`w-fit shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
+        archived
+          ? "bg-slate-100 text-slate-600"
+          : "bg-emerald-50 text-emerald-800"
+      }`}
+    >
+      {t(archived ? "common.archived" : "common.active")}
+    </span>
+  );
+}
+
+function InventoryModal({
+  inventoryForm,
+  isEditing,
+  onClose,
+  onSave,
+  onUpdateForm,
+  t,
+}: {
+  inventoryForm: InventoryForm;
+  isEditing: boolean;
+  onClose: () => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdateForm: (value: InventoryForm) => void;
+  t: (key: string) => string;
+}) {
+  const unitTypes: InventoryUnitType[] = ["piece", "liter", "set", "box"];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
+      <form
+        onSubmit={onSave}
+        className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-w-2xl"
+      >
+        <div className="shrink-0 border-b border-slate-100 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold tracking-normal">
+                {t(isEditing ? "inventory.form.editTitle" : "inventory.form.title")}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {t(
+                  isEditing
+                    ? "inventory.form.editSubtitle"
+                    : "inventory.form.subtitle",
+                )}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
+            >
+              {t("inventory.form.close")}
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="grid gap-4 p-5 sm:grid-cols-2">
+            <FormField
+              label={t("inventory.fields.itemName")}
+              value={inventoryForm.itemName}
+              onChange={(value) =>
+                onUpdateForm({ ...inventoryForm, itemName: value })
+              }
+              placeholder={t("inventory.form.itemNamePlaceholder")}
+              required
+            />
+            <FormField
+              label={t("inventory.fields.arabicItemName")}
+              value={inventoryForm.arabicItemName}
+              onChange={(value) =>
+                onUpdateForm({ ...inventoryForm, arabicItemName: value })
+              }
+              placeholder={t("inventory.form.arabicItemNamePlaceholder")}
+              required
+            />
+            <FormField
+              label={t("inventory.fields.category")}
+              value={inventoryForm.category}
+              onChange={(value) =>
+                onUpdateForm({ ...inventoryForm, category: value })
+              }
+              placeholder={t("inventory.form.categoryPlaceholder")}
+              required
+            />
+            <FormField
+              label={t("inventory.fields.sku")}
+              value={inventoryForm.sku}
+              onChange={(value) => onUpdateForm({ ...inventoryForm, sku: value })}
+              placeholder={t("inventory.form.skuPlaceholder")}
+              required
+            />
+            <FormField
+              label={t("inventory.fields.brand")}
+              value={inventoryForm.brand}
+              onChange={(value) => onUpdateForm({ ...inventoryForm, brand: value })}
+              placeholder={t("inventory.form.brandPlaceholder")}
+              required
+            />
+            <FormField
+              label={t("inventory.fields.supplierName")}
+              value={inventoryForm.supplierName}
+              onChange={(value) =>
+                onUpdateForm({ ...inventoryForm, supplierName: value })
+              }
+              placeholder={t("inventory.form.supplierPlaceholder")}
+              required
+            />
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">
+                {t("inventory.fields.itemType")}
+              </span>
+              <select
+                value={inventoryForm.itemType}
+                onChange={(event) =>
+                  onUpdateForm({
+                    ...inventoryForm,
+                    itemType: event.target.value as InventoryItemType,
+                  })
+                }
+                className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
+              >
+                <option value="stock">{t("inventory.itemTypes.stock")}</option>
+                <option value="service">{t("inventory.itemTypes.service")}</option>
+              </select>
+            </label>
+            <FormField
+              inputType="number"
+              label={t("inventory.fields.stockQuantity")}
+              min="0"
+              value={inventoryForm.stockQuantity}
+              onChange={(value) =>
+                onUpdateForm({ ...inventoryForm, stockQuantity: value })
+              }
+              placeholder={t("inventory.form.stockPlaceholder")}
+              required
+            />
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">
+                {t("inventory.fields.unitType")}
+              </span>
+              <select
+                value={inventoryForm.unitType}
+                onChange={(event) =>
+                  onUpdateForm({
+                    ...inventoryForm,
+                    unitType: event.target.value as InventoryUnitType,
+                  })
+                }
+                className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
+              >
+                {unitTypes.map((unitType) => (
+                  <option key={unitType} value={unitType}>
+                    {t(`inventory.units.${unitType}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <FormField
+              inputType="number"
+              label={t("inventory.fields.costPrice")}
+              min="0"
+              value={inventoryForm.costPrice}
+              onChange={(value) =>
+                onUpdateForm({ ...inventoryForm, costPrice: value })
+              }
+              placeholder={t("inventory.form.costPlaceholder")}
+              required
+            />
+            <FormField
+              inputType="number"
+              label={t("inventory.fields.sellingPrice")}
+              min="0"
+              value={inventoryForm.sellingPrice}
+              onChange={(value) =>
+                onUpdateForm({ ...inventoryForm, sellingPrice: value })
+              }
+              placeholder={t("inventory.form.sellingPlaceholder")}
+              required
+            />
+            <FormField
+              inputType="number"
+              label={t("inventory.fields.minimumStock")}
+              min="0"
+              value={inventoryForm.minimumStock}
+              onChange={(value) =>
+                onUpdateForm({ ...inventoryForm, minimumStock: value })
+              }
+              placeholder={t("inventory.form.minimumStockPlaceholder")}
+              required
+            />
+            <FormField
+              label={t("inventory.fields.location")}
+              value={inventoryForm.location}
+              onChange={(value) =>
+                onUpdateForm({ ...inventoryForm, location: value })
+              }
+              placeholder={t("inventory.form.locationPlaceholder")}
+            />
+            <label className="block sm:col-span-2">
+              <span className="text-sm font-medium text-slate-700">
+                {t("inventory.fields.notes")}
+              </span>
+              <textarea
+                value={inventoryForm.notes}
+                onChange={(event) =>
+                  onUpdateForm({ ...inventoryForm, notes: event.target.value })
+                }
+                placeholder={t("inventory.form.notesPlaceholder")}
+                rows={4}
+                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white p-5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            {t("inventory.form.cancel")}
+          </button>
+          <button
+            type="submit"
+            className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800"
+          >
+            {t("inventory.form.save")}
           </button>
         </div>
       </form>

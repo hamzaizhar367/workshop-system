@@ -17,13 +17,17 @@
     "viewEdit": "عرض/تعديل",
     "archive": "أرشفة",
     "restore": "استعادة",
+    "remove": "إزالة",
     "archived": "مؤرشف",
     "showArchived": "إظهار المؤرشف",
     "notAvailable": "غير متوفر"
   },
   "toast": {
     "recordArchived": "تمت أرشفة السجل",
-    "recordRestored": "تمت استعادة السجل"
+    "recordRestored": "تمت استعادة السجل",
+    "activeJobExists": "هذه المركبة لديها أمر عمل نشط بالفعل",
+    "insufficientStock": "المخزون غير كاف للقطع المحددة",
+    "duplicateParts": "أزل القطع المكررة قبل الحفظ"
   },
   "nav": {
     "dashboard": "لوحة التحكم",
@@ -107,6 +111,7 @@
     "subtitle": "متابعة مركبات العملاء وسجل الصيانة",
     "addButton": "إضافة مركبة",
     "startJob": "بدء أمر عمل",
+    "viewActiveJob": "عرض أمر العمل",
     "viewServiceHistory": "عرض سجل الصيانة",
     "searchLabel": "البحث في المركبات",
     "searchPlaceholder": "ابحث باسم المالك أو رقم اللوحة أو الشركة أو الموديل",
@@ -181,6 +186,67 @@
       "cancel": "إلغاء"
     }
   },
+  "inventory": {
+    "title": "المخزون",
+    "subtitle": "إدارة قطع الورشة والمكونات وأصناف المخزون",
+    "addButton": "إضافة صنف",
+    "searchLabel": "البحث في المخزون",
+    "searchPlaceholder": "ابحث بالصنف أو الاسم العربي أو التصنيف أو SKU أو العلامة أو المورد",
+    "activeRecordCount": "{count} سجل مخزون نشط",
+    "archivedRecordCount": "{count} سجل مخزون مؤرشف",
+    "lowStock": "مخزون منخفض",
+    "emptyActiveTitle": "لا توجد سجلات نشطة",
+    "emptyActiveBody": "أضف صنف مخزون أو استعد صنفاً مؤرشفاً ليظهر في القائمة النشطة.",
+    "emptyArchivedTitle": "لا توجد سجلات مؤرشفة",
+    "emptyArchivedBody": "ستظهر أصناف المخزون المؤرشفة هنا بعد أرشفتها.",
+    "fields": {
+      "itemName": "اسم الصنف",
+      "arabicItemName": "اسم الصنف بالعربية",
+      "category": "التصنيف",
+      "sku": "رقم القطعة / SKU",
+      "brand": "العلامة التجارية",
+      "supplierName": "اسم المورد",
+      "itemType": "نوع الصنف",
+      "stockQuantity": "كمية المخزون",
+      "unitType": "نوع الوحدة",
+      "costPrice": "سعر التكلفة",
+      "sellingPrice": "سعر البيع الافتراضي",
+      "minimumStock": "حد تنبيه المخزون الأدنى",
+      "location": "الموقع / الرف",
+      "notes": "ملاحظات"
+    },
+    "units": {
+      "piece": "قطعة",
+      "liter": "لتر",
+      "set": "طقم",
+      "box": "صندوق"
+    },
+    "itemTypes": {
+      "stock": "صنف مخزون",
+      "service": "صنف خدمة"
+    },
+    "form": {
+      "title": "إضافة صنف مخزون",
+      "subtitle": "إنشاء صنف مخزون محلي للتجربة.",
+      "editTitle": "عرض/تعديل صنف المخزون",
+      "editSubtitle": "مراجعة وتحديث صنف المخزون المحلي.",
+      "close": "إغلاق",
+      "itemNamePlaceholder": "أدخل اسم الصنف",
+      "arabicItemNamePlaceholder": "أدخل اسم الصنف بالعربية",
+      "categoryPlaceholder": "أدخل التصنيف",
+      "skuPlaceholder": "أدخل رقم القطعة أو SKU",
+      "brandPlaceholder": "أدخل العلامة التجارية",
+      "supplierPlaceholder": "أدخل اسم المورد",
+      "stockPlaceholder": "أدخل كمية المخزون",
+      "costPlaceholder": "أدخل سعر التكلفة",
+      "sellingPlaceholder": "أدخل سعر البيع الافتراضي",
+      "minimumStockPlaceholder": "أدخل حد تنبيه المخزون الأدنى",
+      "locationPlaceholder": "أدخل الموقع أو الرف",
+      "notesPlaceholder": "أضف ملاحظات اختيارية",
+      "save": "حفظ",
+      "cancel": "إلغاء"
+    }
+  },
   "jobCards": {
     "title": "أوامر العمل",
     "subtitle": "متابعة أعمال الورشة وسجل الصيانة",
@@ -194,6 +260,9 @@
     "fields": {
       "jobNumber": "رقم أمر العمل",
       "vehicle": "المركبة",
+      "customerName": "اسم العميل",
+      "vehicleName": "اسم المركبة",
+      "plateNumber": "رقم اللوحة",
       "date": "تاريخ أمر العمل",
       "status": "الحالة",
       "amount": "المبلغ",
@@ -210,6 +279,28 @@
       "unpaid": "غير مدفوع",
       "partial": "مدفوع جزئياً",
       "paid": "مدفوع"
+    },
+    "parts": {
+      "title": "القطع المستخدمة",
+      "subtitle": "اختر أصناف المخزون المستخدمة في أمر العمل.",
+      "addPart": "إضافة قطعة",
+      "inventoryItem": "صنف المخزون",
+      "selectItem": "اختر الصنف",
+      "quantity": "الكمية المستخدمة",
+      "quantityPlaceholder": "أدخل الكمية",
+      "unitSellingPrice": "سعر بيع الوحدة",
+      "pricePlaceholder": "أدخل سعر بيع الوحدة",
+      "lineTotal": "إجمالي السطر",
+      "availableStockLabel": "المخزون المتاح",
+      "actions": "الإجراءات",
+      "emptyRow": "اختر صنفاً",
+      "availableStock": "{count} في المخزون",
+      "noStockDeduction": "بدون خصم مخزون",
+      "stockWarning": "الكمية أكبر من المخزون الحالي",
+      "duplicateWarning": "تمت إضافة هذه القطعة بالفعل",
+      "empty": "لم تتم إضافة أي قطع بعد",
+      "partsCount": "عدد القطع",
+      "summary": "ملخص القطع المستخدمة"
     },
     "form": {
       "title": "إضافة أمر عمل",

@@ -17,13 +17,17 @@
     "viewEdit": "View/Edit",
     "archive": "Archive",
     "restore": "Restore",
+    "remove": "Remove",
     "archived": "Archived",
     "showArchived": "Show archived",
     "notAvailable": "N/A"
   },
   "toast": {
     "recordArchived": "Record archived",
-    "recordRestored": "Record restored"
+    "recordRestored": "Record restored",
+    "activeJobExists": "This vehicle already has an active job",
+    "insufficientStock": "Insufficient stock for selected parts",
+    "duplicateParts": "Remove duplicate parts before saving"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -107,6 +111,7 @@
     "subtitle": "Track customer vehicles and maintenance history",
     "addButton": "Add Vehicle",
     "startJob": "Start Job",
+    "viewActiveJob": "View Job",
     "viewServiceHistory": "View Service History",
     "searchLabel": "Search vehicles",
     "searchPlaceholder": "Search by owner, plate number, make, or model",
@@ -181,6 +186,67 @@
       "cancel": "Cancel"
     }
   },
+  "inventory": {
+    "title": "Inventory",
+    "subtitle": "Manage workshop parts, components, and stock items",
+    "addButton": "Add Item",
+    "searchLabel": "Search inventory",
+    "searchPlaceholder": "Search by item, Arabic name, category, SKU, brand, or supplier",
+    "activeRecordCount": "{count} active inventory records",
+    "archivedRecordCount": "{count} archived inventory records",
+    "lowStock": "Low stock",
+    "emptyActiveTitle": "No active records found",
+    "emptyActiveBody": "Add an inventory item or restore an archived item to show it in the active list.",
+    "emptyArchivedTitle": "No archived records found",
+    "emptyArchivedBody": "Archived inventory items will appear here after you archive them.",
+    "fields": {
+      "itemName": "Item name",
+      "arabicItemName": "Arabic item name",
+      "category": "Category",
+      "sku": "Part number / SKU",
+      "brand": "Brand",
+      "supplierName": "Supplier name",
+      "itemType": "Item type",
+      "stockQuantity": "Stock quantity",
+      "unitType": "Unit type",
+      "costPrice": "Cost price",
+      "sellingPrice": "Default selling price",
+      "minimumStock": "Minimum stock alert quantity",
+      "location": "Location / shelf",
+      "notes": "Notes"
+    },
+    "units": {
+      "piece": "Piece",
+      "liter": "Liter",
+      "set": "Set",
+      "box": "Box"
+    },
+    "itemTypes": {
+      "stock": "Stock Item",
+      "service": "Service Item"
+    },
+    "form": {
+      "title": "Add Inventory Item",
+      "subtitle": "Create a local stock item for testing.",
+      "editTitle": "View/Edit Inventory Item",
+      "editSubtitle": "Review and update the local stock item.",
+      "close": "Close",
+      "itemNamePlaceholder": "Enter item name",
+      "arabicItemNamePlaceholder": "Enter Arabic item name",
+      "categoryPlaceholder": "Enter category",
+      "skuPlaceholder": "Enter part number or SKU",
+      "brandPlaceholder": "Enter brand",
+      "supplierPlaceholder": "Enter supplier name",
+      "stockPlaceholder": "Enter stock quantity",
+      "costPlaceholder": "Enter cost price",
+      "sellingPlaceholder": "Enter default selling price",
+      "minimumStockPlaceholder": "Enter minimum stock alert quantity",
+      "locationPlaceholder": "Enter location or shelf",
+      "notesPlaceholder": "Add optional notes",
+      "save": "Save",
+      "cancel": "Cancel"
+    }
+  },
   "jobCards": {
     "title": "Job Cards",
     "subtitle": "Track workshop jobs and service history",
@@ -194,6 +260,9 @@
     "fields": {
       "jobNumber": "Job number",
       "vehicle": "Vehicle",
+      "customerName": "Customer name",
+      "vehicleName": "Vehicle name",
+      "plateNumber": "Plate number",
       "date": "Job date",
       "status": "Status",
       "amount": "Amount",
@@ -210,6 +279,28 @@
       "unpaid": "Unpaid",
       "partial": "Partial",
       "paid": "Paid"
+    },
+    "parts": {
+      "title": "Parts Used",
+      "subtitle": "Select inventory items used on this job.",
+      "addPart": "Add Part",
+      "inventoryItem": "Inventory item",
+      "selectItem": "Select item",
+      "quantity": "Quantity used",
+      "quantityPlaceholder": "Enter quantity",
+      "unitSellingPrice": "Unit selling price",
+      "pricePlaceholder": "Enter unit selling price",
+      "lineTotal": "Line total",
+      "availableStockLabel": "Available stock",
+      "actions": "Actions",
+      "emptyRow": "Select an item",
+      "availableStock": "{count} in stock",
+      "noStockDeduction": "No stock deduction",
+      "stockWarning": "Quantity exceeds current stock",
+      "duplicateWarning": "This part is already added",
+      "empty": "No parts added yet",
+      "partsCount": "Parts count",
+      "summary": "Parts used summary"
     },
     "form": {
       "title": "Add Job Card",
