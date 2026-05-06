@@ -419,6 +419,81 @@
       "lowStock": "Low Stock"
     }
   },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Configure workshop profile, invoice defaults, and display preferences",
+    "kicker": "Workshop configuration",
+    "savedMessage": "Settings saved for this session.",
+    "resetMessage": "Settings reset to defaults.",
+    "actions": {
+      "save": "Save Settings",
+      "reset": "Reset to Default"
+    },
+    "profile": {
+      "title": "Workshop Profile",
+      "subtitle": "Branding and contact details shown across the system"
+    },
+    "invoice": {
+      "title": "Invoice Settings",
+      "subtitle": "Document prefixes and printable invoice preferences"
+    },
+    "preferences": {
+      "title": "Business Preferences",
+      "subtitle": "Default payment and operational settings"
+    },
+    "display": {
+      "title": "Language & Display",
+      "subtitle": "Session language, direction preview, and density"
+    },
+    "notes": {
+      "title": "System Notes",
+      "subtitle": "Internal reminders for this demo session"
+    },
+    "fields": {
+      "workshopName": "Workshop name",
+      "englishSubtitle": "English subtitle",
+      "arabicSubtitle": "Arabic subtitle",
+      "phoneNumber": "Phone number",
+      "city": "City",
+      "country": "Country",
+      "address": "Address",
+      "logoInitials": "Logo initials",
+      "invoicePrefix": "Invoice prefix",
+      "jobCardPrefix": "Job card prefix",
+      "purchaseOrderPrefix": "Purchase order prefix",
+      "defaultVatPercentage": "Default VAT percentage",
+      "defaultCurrency": "Default currency",
+      "showQrPlaceholder": "Show QR/barcode placeholder",
+      "defaultPaymentMethod": "Default payment method",
+      "defaultPaymentStatus": "Default payment status",
+      "lowStockAlertEnabled": "Low stock alert enabled",
+      "archiveConfirmationEnabled": "Archive confirmation enabled",
+      "defaultLanguage": "Default language",
+      "directionPreview": "Direction preview",
+      "compactModeEnabled": "Compact mode",
+      "systemNotes": "System notes"
+    },
+    "placeholders": {
+      "workshopName": "Enter workshop name",
+      "englishSubtitle": "Enter English subtitle",
+      "arabicSubtitle": "Enter Arabic subtitle",
+      "phoneNumber": "Enter phone number",
+      "city": "Enter city",
+      "country": "Enter country",
+      "address": "Enter address",
+      "logoInitials": "Enter initials",
+      "invoicePrefix": "INV",
+      "jobCardPrefix": "JC",
+      "purchaseOrderPrefix": "PO",
+      "defaultVatPercentage": "0",
+      "defaultCurrency": "SAR",
+      "systemNotes": "Add optional internal notes"
+    },
+    "direction": {
+      "ltr": "LTR",
+      "rtl": "RTL"
+    }
+  },
   "invoices": {
     "title": "Invoices",
     "subtitle": "Create invoices from completed job cards",

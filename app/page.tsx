@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useLanguage } from "./language-provider";
 
 type SectionKey =
@@ -54,6 +54,31 @@ type ExpenseCategory =
   | "miscellaneous";
 type ExpensePaymentMethod = "cash" | "card" | "bankTransfer";
 type ReportRange = "today" | "week" | "month" | "all";
+type AppLanguage = "en" | "ar";
+
+type WorkshopSettings = {
+  workshopName: string;
+  englishSubtitle: string;
+  arabicSubtitle: string;
+  phoneNumber: string;
+  city: string;
+  country: string;
+  address: string;
+  logoInitials: string;
+  invoicePrefix: string;
+  jobCardPrefix: string;
+  purchaseOrderPrefix: string;
+  defaultVatPercentage: string;
+  defaultCurrency: string;
+  showQrPlaceholder: boolean;
+  defaultPaymentMethod: ExpensePaymentMethod;
+  defaultPaymentStatus: PaymentStatus;
+  lowStockAlertEnabled: boolean;
+  archiveConfirmationEnabled: boolean;
+  defaultLanguage: AppLanguage;
+  compactModeEnabled: boolean;
+  systemNotes: string;
+};
 
 type JobPart = {
   id: number;
@@ -322,6 +347,30 @@ const expensePaymentMethods: ExpensePaymentMethod[] = [
 ];
 
 const reportRanges: ReportRange[] = ["today", "week", "month", "all"];
+
+const defaultWorkshopSettings: WorkshopSettings = {
+  workshopName: "CAR DC9",
+  englishSubtitle: "Electronic Alignment & Car Services",
+  arabicSubtitle: "ميزان إلكتروني وخدمات سيارات",
+  phoneNumber: "0503191429",
+  city: "Riyadh",
+  country: "Saudi Arabia",
+  address: "",
+  logoInitials: "DC9",
+  invoicePrefix: "INV",
+  jobCardPrefix: "JC",
+  purchaseOrderPrefix: "PO",
+  defaultVatPercentage: "0",
+  defaultCurrency: "SAR",
+  showQrPlaceholder: true,
+  defaultPaymentMethod: "cash",
+  defaultPaymentStatus: "unpaid",
+  lowStockAlertEnabled: true,
+  archiveConfirmationEnabled: false,
+  defaultLanguage: "en",
+  compactModeEnabled: false,
+  systemNotes: "",
+};
 
 const initialCustomers: Customer[] = [
   {
@@ -925,10 +974,16 @@ export default function Home() {
   const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null);
   const [printInvoiceId, setPrintInvoiceId] = useState<number | null>(null);
   const [reportRange, setReportRange] = useState<ReportRange>("month");
+  const [settings, setSettings] = useState<WorkshopSettings>(defaultWorkshopSettings);
+  const [settingsDraft, setSettingsDraft] = useState<WorkshopSettings>(
+    defaultWorkshopSettings,
+  );
+  const [settingsSavedMessage, setSettingsSavedMessage] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
 
   const isArabic = locale === "ar";
   const numberLocale = isArabic ? "ar-SA" : "en-SA";
+  const workshopSubtitle = isArabic ? settings.arabicSubtitle : settings.englishSubtitle;
 
   useEffect(() => {
     document.body.classList.toggle("invoice-printing", printInvoiceId !== null);
@@ -1221,9 +1276,13 @@ export default function Home() {
   };
 
   const formatMoney = (value: number) => {
+    const currencyCode = /^[A-Z]{3}$/.test(settings.defaultCurrency)
+      ? settings.defaultCurrency
+      : "SAR";
+
     return new Intl.NumberFormat(numberLocale, {
       style: "currency",
-      currency: "SAR",
+      currency: currencyCode,
       maximumFractionDigits: 0,
     }).format(value);
   };
@@ -1251,38 +1310,53 @@ export default function Home() {
   };
 
   const getTodayInputValue = () => new Date().toISOString().slice(0, 10);
+  const getDocumentPrefix = (value: string, fallback: string) =>
+    value.trim().replace(/[^a-zA-Z0-9]/g, "").toUpperCase() || fallback;
+  const getPrefixedRecordNumber = (value: string, prefix: string) => {
+    const normalizedPrefix = `${prefix}-`;
+    const parsedNumber = Number(
+      value.startsWith(normalizedPrefix)
+        ? value.slice(normalizedPrefix.length)
+        : value.split("-").at(-1),
+    );
+
+    return Number.isFinite(parsedNumber) ? parsedNumber : 0;
+  };
 
   const getNextJobNumber = () => {
+    const prefix = getDocumentPrefix(settings.jobCardPrefix, "JC");
     const highestJobNumber = jobCards.reduce((highestNumber, jobCard) => {
-      const parsedNumber = Number(jobCard.jobNumber.replace("JC-", ""));
+      const parsedNumber = getPrefixedRecordNumber(jobCard.jobNumber, prefix);
       return Number.isFinite(parsedNumber)
         ? Math.max(highestNumber, parsedNumber)
         : highestNumber;
     }, 1000);
 
-    return `JC-${highestJobNumber + 1}`;
+    return `${prefix}-${highestJobNumber + 1}`;
   };
 
   const getNextPurchaseId = () => {
+    const prefix = getDocumentPrefix(settings.purchaseOrderPrefix, "PO");
     const highestPurchaseNumber = purchases.reduce((highestNumber, purchase) => {
-      const parsedNumber = Number(purchase.purchaseId.replace("PO-", ""));
+      const parsedNumber = getPrefixedRecordNumber(purchase.purchaseId, prefix);
       return Number.isFinite(parsedNumber)
         ? Math.max(highestNumber, parsedNumber)
         : highestNumber;
     }, 1000);
 
-    return `PO-${highestPurchaseNumber + 1}`;
+    return `${prefix}-${highestPurchaseNumber + 1}`;
   };
 
   const getNextInvoiceNumber = () => {
+    const prefix = getDocumentPrefix(settings.invoicePrefix, "INV");
     const highestInvoiceNumber = invoices.reduce((highestNumber, invoice) => {
-      const parsedNumber = Number(invoice.invoiceNumber.replace("INV-", ""));
+      const parsedNumber = getPrefixedRecordNumber(invoice.invoiceNumber, prefix);
       return Number.isFinite(parsedNumber)
         ? Math.max(highestNumber, parsedNumber)
         : highestNumber;
     }, 1000);
 
-    return `INV-${highestInvoiceNumber + 1}`;
+    return `${prefix}-${highestInvoiceNumber + 1}`;
   };
 
   const getPaymentStatusFromAmounts = (paidAmount: number, grandTotal: number) => {
@@ -1633,6 +1707,7 @@ export default function Home() {
         ...emptyJobCardForm,
         jobNumber: getNextJobNumber(),
         date: getTodayInputValue(),
+        paymentStatus: settings.defaultPaymentStatus,
       });
     }
 
@@ -1857,6 +1932,7 @@ export default function Home() {
   const openPurchaseModal = () => {
     setPurchaseForm({
       ...emptyPurchaseForm,
+      paymentStatus: settings.defaultPaymentStatus,
       purchaseDate: getTodayInputValue(),
     });
     setDuplicatePurchaseRowId(null);
@@ -1956,6 +2032,7 @@ export default function Home() {
     setExpenseForm({
       ...emptyExpenseForm,
       date: getTodayInputValue(),
+      paymentMethod: settings.defaultPaymentMethod,
     });
     setIsExpenseModalOpen(true);
   };
@@ -2148,6 +2225,36 @@ export default function Home() {
     showToast(archived ? "toast.recordArchived" : "toast.recordRestored");
   };
 
+  const saveSettings = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextSettings = {
+      ...settingsDraft,
+      invoicePrefix: getDocumentPrefix(settingsDraft.invoicePrefix, "INV"),
+      jobCardPrefix: getDocumentPrefix(settingsDraft.jobCardPrefix, "JC"),
+      purchaseOrderPrefix: getDocumentPrefix(settingsDraft.purchaseOrderPrefix, "PO"),
+      defaultCurrency: settingsDraft.defaultCurrency.trim().toUpperCase() || "SAR",
+      logoInitials: settingsDraft.logoInitials.trim() || "DC9",
+      workshopName: settingsDraft.workshopName.trim() || defaultWorkshopSettings.workshopName,
+      englishSubtitle:
+        settingsDraft.englishSubtitle.trim() || defaultWorkshopSettings.englishSubtitle,
+      arabicSubtitle:
+        settingsDraft.arabicSubtitle.trim() || defaultWorkshopSettings.arabicSubtitle,
+      phoneNumber: settingsDraft.phoneNumber.trim() || defaultWorkshopSettings.phoneNumber,
+    };
+
+    setSettings(nextSettings);
+    setSettingsDraft(nextSettings);
+    setLocale(nextSettings.defaultLanguage);
+    setSettingsSavedMessage("settings.savedMessage");
+  };
+
+  const resetSettings = () => {
+    setSettings(defaultWorkshopSettings);
+    setSettingsDraft(defaultWorkshopSettings);
+    setLocale(defaultWorkshopSettings.defaultLanguage);
+    setSettingsSavedMessage("settings.resetMessage");
+  };
+
   const sectionHeaderKeys: Record<SectionKey, { title: string; subtitle: string }> = {
     dashboard: { title: "topbar.title", subtitle: "topbar.subtitle" },
     customers: { title: "customers.title", subtitle: "customers.subtitle" },
@@ -2158,7 +2265,7 @@ export default function Home() {
     expenses: { title: "expenses.title", subtitle: "expenses.subtitle" },
     invoices: { title: "invoices.title", subtitle: "invoices.subtitle" },
     reports: { title: "reports.title", subtitle: "reports.subtitle" },
-    settings: { title: "topbar.title", subtitle: "topbar.subtitle" },
+    settings: { title: "settings.title", subtitle: "settings.subtitle" },
   };
 
   const topbarTitleKey = sectionHeaderKeys[activeSection].title;
@@ -2170,13 +2277,13 @@ export default function Home() {
         <aside className="hidden w-72 shrink-0 border-s border-slate-200 bg-white px-4 py-5 shadow-sm md:flex md:flex-col">
           <div className="mb-8 flex items-center gap-3">
             <div className="flex size-11 items-center justify-center rounded-lg bg-emerald-700 text-sm font-bold text-white">
-              {t("app.shortName")}
+              {settings.logoInitials}
             </div>
             <div>
-              <p className="text-base font-semibold">{t("app.name")}</p>
-              <p className="text-xs text-slate-500">{t("app.subtitle")}</p>
+              <p className="text-base font-semibold">{settings.workshopName}</p>
+              <p className="text-xs text-slate-500">{workshopSubtitle}</p>
               <p className="mt-0.5 text-xs font-medium text-slate-600" dir="ltr">
-                {t("app.phone")}
+                {settings.phoneNumber}
               </p>
             </div>
           </div>
@@ -2207,14 +2314,14 @@ export default function Home() {
                 </div>
 
                 <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-700 text-xs font-bold text-white md:hidden">
-                  {t("app.shortName")}
+                  {settings.logoInitials}
                 </div>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <div className="hidden text-end text-xs text-slate-500 xl:block">
-                  <p className="font-medium text-slate-700">{t("app.name")}</p>
-                  <p dir="ltr">{t("app.phone")}</p>
+                  <p className="font-medium text-slate-700">{settings.workshopName}</p>
+                  <p dir="ltr">{settings.phoneNumber}</p>
                 </div>
 
                 <label className="sr-only" htmlFor="global-search">
@@ -2465,6 +2572,15 @@ export default function Home() {
                 uninvoicedCompletedJobs={reportUninvoicedCompletedJobs}
                 uninvoicedCompletedWorkValue={reportUninvoicedCompletedWorkValue}
               />
+            ) : activeSection === "settings" ? (
+              <SettingsSection
+                onReset={resetSettings}
+                onSave={saveSettings}
+                onUpdateSettings={setSettingsDraft}
+                savedMessage={settingsSavedMessage}
+                settings={settingsDraft}
+                t={t}
+              />
             ) : (
               <DashboardSection formatCardValue={formatCardValue} t={t} />
             )}
@@ -2477,6 +2593,7 @@ export default function Home() {
           formatMoney={formatMoney}
           invoice={invoices.find((invoice) => invoice.id === printInvoiceId)}
           onClose={() => setPrintInvoiceId(null)}
+          settings={settings}
           t={t}
         />
       ) : null}
@@ -4442,12 +4559,14 @@ function PrintInvoiceModal({
   formatMoney,
   invoice,
   onClose,
+  settings,
   t,
 }: {
   formatDate: (value: string) => string;
   formatMoney: (value: number) => string;
   invoice?: Invoice;
   onClose: () => void;
+  settings: WorkshopSettings;
   t: (key: string) => string;
 }) {
   if (!invoice) {
@@ -4467,12 +4586,12 @@ function PrintInvoiceModal({
           <section className="invoice-sheet mx-auto min-h-[1120px] w-full max-w-[820px] bg-white p-8 shadow-sm ring-1 ring-slate-200 sm:p-10 print:min-h-0 print:max-w-none print:p-0 print:shadow-none print:ring-0">
             <div className="invoice-header flex flex-col gap-6 border-b-2 border-slate-900 pb-6 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-3xl font-black tracking-normal text-slate-950">{t("app.name")}</h2>
-                <p className="mt-2 text-base font-semibold text-slate-700">{t("app.subtitle")}</p>
+                <h2 className="text-3xl font-black tracking-normal text-slate-950">{settings.workshopName}</h2>
+                <p className="mt-2 text-base font-semibold text-slate-700">{settings.englishSubtitle}</p>
                 <p className="mt-1 text-base font-semibold text-slate-700" lang="ar" dir="rtl">
-                  {"\u0645\u064a\u0632\u0627\u0646 \u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a \u0648\u062e\u062f\u0645\u0627\u062a \u0633\u064a\u0627\u0631\u0627\u062a"}
+                  {settings.arabicSubtitle}
                 </p>
-                <p className="mt-3 text-sm font-bold text-slate-900" dir="ltr">{t("app.phone")}</p>
+                <p className="mt-3 text-sm font-bold text-slate-900" dir="ltr">{settings.phoneNumber}</p>
               </div>
               <div className="invoice-number-card rounded-lg border border-slate-200 bg-slate-50 p-4 text-start sm:min-w-64 sm:text-end">
                 <p className="text-xs font-medium uppercase text-slate-400">{t("invoices.fields.invoiceNumber")}</p>
@@ -4541,9 +4660,13 @@ function PrintInvoiceModal({
             </section>
 
             <div className="invoice-totals mt-6 grid gap-6 sm:grid-cols-[1fr_320px]">
-              <div className="invoice-qr flex size-36 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 p-4 text-center text-xs font-bold uppercase text-slate-400">
-                {t("invoices.print.qrPlaceholder")}
-              </div>
+              {settings.showQrPlaceholder ? (
+                <div className="invoice-qr flex size-36 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 p-4 text-center text-xs font-bold uppercase text-slate-400">
+                  {t("invoices.print.qrPlaceholder")}
+                </div>
+              ) : (
+                <div />
+              )}
               <dl className="invoice-total-card grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
                 <div className="flex justify-between gap-4"><dt>{t("invoices.fields.laborCost")}</dt><dd className="font-semibold">{formatMoney(invoice.laborCost)}</dd></div>
                 <div className="flex justify-between gap-4"><dt>{t("invoices.fields.partsCost")}</dt><dd className="font-semibold">{formatMoney(invoice.partsCost)}</dd></div>
@@ -4558,6 +4681,189 @@ function PrintInvoiceModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function SettingsSection({
+  onReset,
+  onSave,
+  onUpdateSettings,
+  savedMessage,
+  settings,
+  t,
+}: {
+  onReset: () => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdateSettings: (value: WorkshopSettings) => void;
+  savedMessage: string | null;
+  settings: WorkshopSettings;
+  t: (key: string) => string;
+}) {
+  const directionPreview = settings.defaultLanguage === "ar" ? "rtl" : "ltr";
+
+  return (
+    <form onSubmit={onSave}>
+      <section className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-medium text-emerald-700">{t("settings.kicker")}</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-normal">{t("settings.title")}</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{t("settings.subtitle")}</p>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={onReset}
+            className="h-11 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            {t("settings.actions.reset")}
+          </button>
+          <button
+            type="submit"
+            className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800"
+          >
+            {t("settings.actions.save")}
+          </button>
+        </div>
+      </section>
+
+      {savedMessage ? (
+        <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+          {t(savedMessage)}
+        </div>
+      ) : null}
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <SettingsCard title={t("settings.profile.title")} subtitle={t("settings.profile.subtitle")}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label={t("settings.fields.workshopName")} value={settings.workshopName} onChange={(value) => onUpdateSettings({ ...settings, workshopName: value })} placeholder={t("settings.placeholders.workshopName")} required />
+            <FormField label={t("settings.fields.logoInitials")} value={settings.logoInitials} onChange={(value) => onUpdateSettings({ ...settings, logoInitials: value })} placeholder={t("settings.placeholders.logoInitials")} required />
+            <FormField label={t("settings.fields.englishSubtitle")} value={settings.englishSubtitle} onChange={(value) => onUpdateSettings({ ...settings, englishSubtitle: value })} placeholder={t("settings.placeholders.englishSubtitle")} required />
+            <FormField label={t("settings.fields.arabicSubtitle")} value={settings.arabicSubtitle} onChange={(value) => onUpdateSettings({ ...settings, arabicSubtitle: value })} placeholder={t("settings.placeholders.arabicSubtitle")} required />
+            <FormField label={t("settings.fields.phoneNumber")} value={settings.phoneNumber} onChange={(value) => onUpdateSettings({ ...settings, phoneNumber: value })} placeholder={t("settings.placeholders.phoneNumber")} required />
+            <FormField label={t("settings.fields.city")} value={settings.city} onChange={(value) => onUpdateSettings({ ...settings, city: value })} placeholder={t("settings.placeholders.city")} />
+            <FormField label={t("settings.fields.country")} value={settings.country} onChange={(value) => onUpdateSettings({ ...settings, country: value })} placeholder={t("settings.placeholders.country")} />
+            <FormField label={t("settings.fields.address")} value={settings.address} onChange={(value) => onUpdateSettings({ ...settings, address: value })} placeholder={t("settings.placeholders.address")} />
+          </div>
+        </SettingsCard>
+
+        <SettingsCard title={t("settings.invoice.title")} subtitle={t("settings.invoice.subtitle")}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label={t("settings.fields.invoicePrefix")} value={settings.invoicePrefix} onChange={(value) => onUpdateSettings({ ...settings, invoicePrefix: value })} placeholder={t("settings.placeholders.invoicePrefix")} required />
+            <FormField label={t("settings.fields.jobCardPrefix")} value={settings.jobCardPrefix} onChange={(value) => onUpdateSettings({ ...settings, jobCardPrefix: value })} placeholder={t("settings.placeholders.jobCardPrefix")} required />
+            <FormField label={t("settings.fields.purchaseOrderPrefix")} value={settings.purchaseOrderPrefix} onChange={(value) => onUpdateSettings({ ...settings, purchaseOrderPrefix: value })} placeholder={t("settings.placeholders.purchaseOrderPrefix")} required />
+            <FormField inputType="number" min="0" label={t("settings.fields.defaultVatPercentage")} value={settings.defaultVatPercentage} onChange={(value) => onUpdateSettings({ ...settings, defaultVatPercentage: value })} placeholder={t("settings.placeholders.defaultVatPercentage")} />
+            <FormField label={t("settings.fields.defaultCurrency")} value={settings.defaultCurrency} onChange={(value) => onUpdateSettings({ ...settings, defaultCurrency: value })} placeholder={t("settings.placeholders.defaultCurrency")} required />
+          </div>
+          <div className="mt-4">
+            <SettingsToggle
+              checked={settings.showQrPlaceholder}
+              label={t("settings.fields.showQrPlaceholder")}
+              onChange={(value) => onUpdateSettings({ ...settings, showQrPlaceholder: value })}
+            />
+          </div>
+        </SettingsCard>
+
+        <SettingsCard title={t("settings.preferences.title")} subtitle={t("settings.preferences.subtitle")}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">{t("settings.fields.defaultPaymentMethod")}</span>
+              <select value={settings.defaultPaymentMethod} onChange={(event) => onUpdateSettings({ ...settings, defaultPaymentMethod: event.target.value as ExpensePaymentMethod })} className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600">
+                {expensePaymentMethods.map((paymentMethod) => (
+                  <option key={paymentMethod} value={paymentMethod}>{t(`expenses.paymentMethod.${paymentMethod}`)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">{t("settings.fields.defaultPaymentStatus")}</span>
+              <select value={settings.defaultPaymentStatus} onChange={(event) => onUpdateSettings({ ...settings, defaultPaymentStatus: event.target.value as PaymentStatus })} className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600">
+                {(["unpaid", "partial", "paid"] as PaymentStatus[]).map((status) => (
+                  <option key={status} value={status}>{t(`jobCards.paymentStatus.${status}`)}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="mt-4 grid gap-3">
+            <SettingsToggle checked={settings.lowStockAlertEnabled} label={t("settings.fields.lowStockAlertEnabled")} onChange={(value) => onUpdateSettings({ ...settings, lowStockAlertEnabled: value })} />
+            <SettingsToggle checked={settings.archiveConfirmationEnabled} label={t("settings.fields.archiveConfirmationEnabled")} onChange={(value) => onUpdateSettings({ ...settings, archiveConfirmationEnabled: value })} />
+          </div>
+        </SettingsCard>
+
+        <SettingsCard title={t("settings.display.title")} subtitle={t("settings.display.subtitle")}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">{t("settings.fields.defaultLanguage")}</span>
+              <select value={settings.defaultLanguage} onChange={(event) => onUpdateSettings({ ...settings, defaultLanguage: event.target.value as AppLanguage })} className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600">
+                <option value="en">{t("language.english")}</option>
+                <option value="ar">{t("language.arabic")}</option>
+              </select>
+            </label>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-medium text-slate-500">{t("settings.fields.directionPreview")}</p>
+              <p className="mt-2 text-lg font-black uppercase text-slate-950">
+                {t(`settings.direction.${directionPreview}`)}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4">
+            <SettingsToggle checked={settings.compactModeEnabled} label={t("settings.fields.compactModeEnabled")} onChange={(value) => onUpdateSettings({ ...settings, compactModeEnabled: value })} />
+          </div>
+        </SettingsCard>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
+          <div>
+            <h3 className="text-lg font-semibold tracking-normal text-slate-950">{t("settings.notes.title")}</h3>
+            <p className="mt-1 text-sm text-slate-500">{t("settings.notes.subtitle")}</p>
+          </div>
+          <label className="mt-4 block">
+            <span className="text-sm font-medium text-slate-700">{t("settings.fields.systemNotes")}</span>
+            <textarea value={settings.systemNotes} onChange={(event) => onUpdateSettings({ ...settings, systemNotes: event.target.value })} placeholder={t("settings.placeholders.systemNotes")} rows={4} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600" />
+          </label>
+        </section>
+      </div>
+    </form>
+  );
+}
+
+function SettingsCard({
+  children,
+  subtitle,
+  title,
+}: {
+  children: ReactNode;
+  subtitle: string;
+  title: string;
+}) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold tracking-normal text-slate-950">{title}</h3>
+        <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SettingsToggle({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+      <span className="text-sm font-semibold text-slate-700">{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="size-5 rounded border-slate-300 text-emerald-700 accent-emerald-700"
+      />
+    </label>
   );
 }
 

@@ -419,6 +419,81 @@
       "lowStock": "مخزون منخفض"
     }
   },
+  "settings": {
+    "title": "الإعدادات",
+    "subtitle": "ضبط ملف الورشة وإعدادات الفواتير وتفضيلات العرض",
+    "kicker": "إعدادات الورشة",
+    "savedMessage": "تم حفظ الإعدادات لهذه الجلسة.",
+    "resetMessage": "تمت إعادة الإعدادات إلى القيم الافتراضية.",
+    "actions": {
+      "save": "حفظ الإعدادات",
+      "reset": "إعادة الافتراضي"
+    },
+    "profile": {
+      "title": "ملف الورشة",
+      "subtitle": "بيانات العلامة والتواصل المعروضة في النظام"
+    },
+    "invoice": {
+      "title": "إعدادات الفواتير",
+      "subtitle": "بادئات المستندات وخيارات الفاتورة المطبوعة"
+    },
+    "preferences": {
+      "title": "تفضيلات العمل",
+      "subtitle": "إعدادات الدفع والتشغيل الافتراضية"
+    },
+    "display": {
+      "title": "اللغة والعرض",
+      "subtitle": "لغة الجلسة واتجاه العرض والكثافة"
+    },
+    "notes": {
+      "title": "ملاحظات النظام",
+      "subtitle": "تذكيرات داخلية لهذه الجلسة التجريبية"
+    },
+    "fields": {
+      "workshopName": "اسم الورشة",
+      "englishSubtitle": "الوصف الإنجليزي",
+      "arabicSubtitle": "الوصف العربي",
+      "phoneNumber": "رقم الهاتف",
+      "city": "المدينة",
+      "country": "الدولة",
+      "address": "العنوان",
+      "logoInitials": "أحرف الشعار",
+      "invoicePrefix": "بادئة الفاتورة",
+      "jobCardPrefix": "بادئة أمر العمل",
+      "purchaseOrderPrefix": "بادئة أمر الشراء",
+      "defaultVatPercentage": "نسبة الضريبة الافتراضية",
+      "defaultCurrency": "العملة الافتراضية",
+      "showQrPlaceholder": "إظهار مكان QR/الباركود",
+      "defaultPaymentMethod": "طريقة الدفع الافتراضية",
+      "defaultPaymentStatus": "حالة الدفع الافتراضية",
+      "lowStockAlertEnabled": "تفعيل تنبيه المخزون المنخفض",
+      "archiveConfirmationEnabled": "تفعيل تأكيد الأرشفة",
+      "defaultLanguage": "اللغة الافتراضية",
+      "directionPreview": "معاينة الاتجاه",
+      "compactModeEnabled": "الوضع المضغوط",
+      "systemNotes": "ملاحظات النظام"
+    },
+    "placeholders": {
+      "workshopName": "أدخل اسم الورشة",
+      "englishSubtitle": "أدخل الوصف الإنجليزي",
+      "arabicSubtitle": "أدخل الوصف العربي",
+      "phoneNumber": "أدخل رقم الهاتف",
+      "city": "أدخل المدينة",
+      "country": "أدخل الدولة",
+      "address": "أدخل العنوان",
+      "logoInitials": "أدخل الأحرف",
+      "invoicePrefix": "INV",
+      "jobCardPrefix": "JC",
+      "purchaseOrderPrefix": "PO",
+      "defaultVatPercentage": "0",
+      "defaultCurrency": "SAR",
+      "systemNotes": "أضف ملاحظات داخلية اختيارية"
+    },
+    "direction": {
+      "ltr": "LTR",
+      "rtl": "RTL"
+    }
+  },
   "invoices": {
     "title": "الفواتير",
     "subtitle": "إنشاء فواتير من أوامر العمل المكتملة",
