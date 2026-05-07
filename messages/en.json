@@ -55,11 +55,15 @@
   "dashboard": {
     "welcomeTitle": "Workshop overview",
     "welcomeBody": "A quick bilingual snapshot for daily operations.",
-    "quickAction": "New Job Card"
+    "quickAction": "New Job Card",
+    "financialSnapshot": "Financial Snapshot",
+    "operationsSnapshot": "Operations Snapshot"
   },
   "cards": {
     "activeJobs": "Active Jobs",
     "todaysRevenue": "Today\u2019s Revenue",
+    "todayExpenses": "Today Expenses",
+    "todayProfit": "Today Profit",
     "pendingPayments": "Pending Payments",
     "lowStockItems": "Low Stock Items",
     "monthlyExpenses": "Monthly Expenses",

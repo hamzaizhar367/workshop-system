@@ -342,13 +342,16 @@ const navigationItems: Array<{ key: SectionKey; translationKey: string }> = [
   { key: "settings", translationKey: "nav.settings" },
 ];
 
-const dashboardCardDefinitions = [
-  { key: "activeJobs", translationKey: "cards.activeJobs" },
+const dashboardFinancialCardDefinitions = [
   { key: "todaysRevenue", translationKey: "cards.todaysRevenue", currency: true },
+  { key: "todayExpenses", translationKey: "cards.todayExpenses", currency: true },
+  { key: "todayProfit", translationKey: "cards.todayProfit", currency: true },
+] as const;
+
+const dashboardOperationsCardDefinitions = [
+  { key: "activeJobs", translationKey: "cards.activeJobs" },
   { key: "pendingPayments", translationKey: "cards.pendingPayments" },
   { key: "lowStockItems", translationKey: "cards.lowStockItems" },
-  { key: "monthlyExpenses", translationKey: "cards.monthlyExpenses", currency: true },
-  { key: "completedJobs", translationKey: "cards.completedJobs" },
 ] as const;
 
 const expenseCategories: ExpenseCategory[] = [
@@ -1498,6 +1501,7 @@ export default function Home() {
   const [editingInventoryItemId, setEditingInventoryItemId] =
     useState<number | null>(null);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [editingPurchaseId, setEditingPurchaseId] = useState<number | null>(null);
   const [purchaseForm, setPurchaseForm] = useState<PurchaseForm>(emptyPurchaseForm);
   const [expandedPurchaseId, setExpandedPurchaseId] = useState<number | null>(null);
   const [duplicatePurchaseRowId, setDuplicatePurchaseRowId] = useState<string | null>(
@@ -1742,6 +1746,30 @@ export default function Home() {
         : total,
     0,
   );
+  const dashboardTodayExpenseTotal = activeExpenses.reduce(
+    (total, expense) =>
+      isDateInReportRange(expense.date, "today") ? total + expense.amount : total,
+    0,
+  );
+  const dashboardTodayPurchaseCosts = purchases.reduce(
+    (total, purchase) =>
+      isDateInReportRange(purchase.purchaseDate, "today")
+        ? total + purchase.totalAmount
+        : total,
+    0,
+  );
+  const dashboardTodayLaborCosts = jobCards.reduce(
+    (total, jobCard) =>
+      !jobCard.archived && isDateInReportRange(jobCard.date, "today")
+        ? total + jobCard.laborCost
+        : total,
+    0,
+  );
+  const dashboardTodayExpenses =
+    dashboardTodayExpenseTotal +
+    dashboardTodayPurchaseCosts +
+    dashboardTodayLaborCosts;
+  const dashboardTodayProfit = dashboardTodaysRevenue - dashboardTodayExpenses;
   const dashboardPendingInvoices = invoices.filter(
     (invoice) =>
       !invoice.archived &&
@@ -1762,18 +1790,19 @@ export default function Home() {
   const dashboardLowStockItems = inventoryItems.filter(
     (item) => !item.archived && item.stockQuantity <= item.minimumStock,
   );
-  const dashboardCompletedJobs = jobCards.filter(
-    (jobCard) => !jobCard.archived && jobCard.status === "completed",
-  );
   const dashboardStats = {
     activeJobs: dashboardActiveJobs.length,
     todaysRevenue: dashboardTodaysRevenue,
+    todayExpenses: dashboardTodayExpenses,
+    todayProfit: dashboardTodayProfit,
     pendingPayments: dashboardPendingInvoices.length + dashboardPendingJobCards.length,
     lowStockItems: dashboardLowStockItems.length,
-    monthlyExpenses: monthlyExpenseTotal,
-    completedJobs: dashboardCompletedJobs.length,
   };
-  const dashboardCards = dashboardCardDefinitions.map((card) => ({
+  const dashboardFinancialCards = dashboardFinancialCardDefinitions.map((card) => ({
+    ...card,
+    value: dashboardStats[card.key],
+  }));
+  const dashboardOperationsCards = dashboardOperationsCardDefinitions.map((card) => ({
     ...card,
     value: dashboardStats[card.key],
   }));
@@ -2725,18 +2754,37 @@ export default function Home() {
     showToast(archived ? "toast.recordArchived" : "toast.recordRestored");
   };
 
-  const openPurchaseModal = () => {
-    setPurchaseForm({
-      ...emptyPurchaseForm,
-      paymentStatus: settings.defaultPaymentStatus,
-      purchaseDate: getTodayInputValue(),
-    });
+  const openPurchaseModal = (purchase?: Purchase) => {
+    if (purchase) {
+      setEditingPurchaseId(purchase.id);
+      setPurchaseForm({
+        supplierName: purchase.supplierName,
+        purchaseDate: purchase.purchaseDate,
+        paymentStatus: purchase.paymentStatus,
+        notes: purchase.notes,
+        items: purchase.items.map((item, index) => ({
+          rowId: item.rowId || `purchase-${purchase.id}-${item.inventoryItemId}-${index}`,
+          inventoryItemId: String(item.inventoryItemId),
+          quantity: String(item.quantity),
+          costPrice: String(item.costPrice),
+        })),
+      });
+    } else {
+      setEditingPurchaseId(null);
+      setPurchaseForm({
+        ...emptyPurchaseForm,
+        paymentStatus: settings.defaultPaymentStatus,
+        purchaseDate: getTodayInputValue(),
+      });
+    }
+
     setDuplicatePurchaseRowId(null);
     setIsPurchaseModalOpen(true);
   };
 
   const closePurchaseModal = () => {
     setIsPurchaseModalOpen(false);
+    setEditingPurchaseId(null);
     setPurchaseForm(emptyPurchaseForm);
     setDuplicatePurchaseRowId(null);
   };
@@ -2799,8 +2847,8 @@ export default function Home() {
     return null;
   };
 
-  const increaseInventoryStockFromPurchase = (purchaseItems: PurchaseItem[]) => {
-    const purchasedQuantities = purchaseItems.reduce<Record<number, number>>(
+  const getPurchaseStockQuantities = (purchaseItems: PurchaseItem[]) => {
+    return purchaseItems.reduce<Record<number, number>>(
       (quantities, item) => ({
         ...quantities,
         [item.inventoryItemId]:
@@ -2808,13 +2856,65 @@ export default function Home() {
       }),
       {},
     );
+  };
+
+  const getPurchaseStockAdjustmentErrorKey = (
+    previousItems: PurchaseItem[],
+    nextItems: PurchaseItem[],
+  ) => {
+    const previousQuantities = getPurchaseStockQuantities(previousItems);
+    const nextQuantities = getPurchaseStockQuantities(nextItems);
+    const adjustedItemIds = new Set([
+      ...Object.keys(previousQuantities),
+      ...Object.keys(nextQuantities),
+    ]);
+
+    const wouldReduceBelowZero = [...adjustedItemIds].some((itemId) => {
+      const item = inventoryItems.find(
+        (inventoryItem) => inventoryItem.id === Number(itemId),
+      );
+      const stockDelta =
+        (nextQuantities[Number(itemId)] ?? 0) -
+        (previousQuantities[Number(itemId)] ?? 0);
+
+      return item ? item.stockQuantity + stockDelta < 0 : false;
+    });
+
+    return wouldReduceBelowZero ? "toast.insufficientStock" : null;
+  };
+
+  const applyPurchaseStockAdjustment = (
+    previousItems: PurchaseItem[],
+    nextItems: PurchaseItem[],
+  ) => {
+    const previousQuantities = getPurchaseStockQuantities(previousItems);
+    const nextQuantities = getPurchaseStockQuantities(nextItems);
+    const adjustedItemIds = new Set([
+      ...Object.keys(previousQuantities),
+      ...Object.keys(nextQuantities),
+    ]);
+
+    if (
+      adjustedItemIds.size === 0 ||
+      [...adjustedItemIds].every(
+        (itemId) =>
+          (previousQuantities[Number(itemId)] ?? 0) ===
+          (nextQuantities[Number(itemId)] ?? 0),
+      )
+    ) {
+      return;
+    }
 
     setInventoryItems((currentItems) =>
-      currentItems.map((item) => ({
-        ...item,
-        stockQuantity:
-          item.stockQuantity + (purchasedQuantities[item.id] ?? 0),
-      })),
+      currentItems.map((item) => {
+        const stockDelta =
+          (nextQuantities[item.id] ?? 0) - (previousQuantities[item.id] ?? 0);
+
+        return {
+          ...item,
+          stockQuantity: Math.max(0, item.stockQuantity + stockDelta),
+        };
+      }),
     );
   };
 
@@ -2841,9 +2941,26 @@ export default function Home() {
       return;
     }
 
-    const nextPurchase: Purchase = {
-      id: Date.now(),
-      purchaseId: getNextPurchaseId(),
+    const existingPurchase = editingPurchaseId
+      ? purchases.find((purchase) => purchase.id === editingPurchaseId)
+      : undefined;
+
+    if (editingPurchaseId && !existingPurchase) {
+      return;
+    }
+
+    const stockAdjustmentErrorKey = getPurchaseStockAdjustmentErrorKey(
+      existingPurchase?.items ?? [],
+      purchaseItems,
+    );
+
+    if (stockAdjustmentErrorKey) {
+      showToast(stockAdjustmentErrorKey);
+      return;
+    }
+
+    const purchaseValues = {
+      purchaseId: existingPurchase?.purchaseId ?? getNextPurchaseId(),
       supplierName: purchaseForm.supplierName.trim(),
       purchaseDate: purchaseForm.purchaseDate,
       items: purchaseItems,
@@ -2854,8 +2971,29 @@ export default function Home() {
       createdBy: "Hamza",
     };
 
+    if (editingPurchaseId && existingPurchase) {
+      setPurchases((currentPurchases) =>
+        currentPurchases.map((purchase) =>
+          purchase.id === editingPurchaseId
+            ? {
+                ...purchase,
+                ...purchaseValues,
+              }
+            : purchase,
+        ),
+      );
+      applyPurchaseStockAdjustment(existingPurchase.items, purchaseItems);
+      closePurchaseModal();
+      return;
+    }
+
+    const nextPurchase: Purchase = {
+      id: Date.now(),
+      ...purchaseValues,
+    };
+
     setPurchases((currentPurchases) => [nextPurchase, ...currentPurchases]);
-    increaseInventoryStockFromPurchase(purchaseItems);
+    applyPurchaseStockAdjustment([], purchaseItems);
     closePurchaseModal();
   };
 
@@ -3535,9 +3673,10 @@ export default function Home() {
               />
             ) : (
               <DashboardSection
-                cards={dashboardCards}
+                financialCards={dashboardFinancialCards}
                 formatCardValue={formatCardValue}
                 onCreateJobCard={openNewJobCardFromDashboard}
+                operationsCards={dashboardOperationsCards}
                 t={t}
               />
             )}
@@ -3622,12 +3761,13 @@ function NavigationButton({
 }
 
 function DashboardSection({
-  cards,
+  financialCards,
   formatCardValue,
   onCreateJobCard,
+  operationsCards,
   t,
 }: {
-  cards: Array<{
+  financialCards: Array<{
     key: string;
     translationKey: string;
     value: number;
@@ -3635,8 +3775,44 @@ function DashboardSection({
   }>;
   formatCardValue: (value: number, currency?: boolean) => string;
   onCreateJobCard: () => void;
+  operationsCards: Array<{
+    key: string;
+    translationKey: string;
+    value: number;
+    currency?: boolean;
+  }>;
   t: (key: string) => string;
 }) {
+  const renderCards = (
+    cards: Array<{
+      key: string;
+      translationKey: string;
+      value: number;
+      currency?: boolean;
+    }>,
+  ) => (
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      {cards.map((card) => (
+        <article
+          key={card.key}
+          className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-slate-500">
+                {t(card.translationKey)}
+              </p>
+              <p className="mt-3 text-3xl font-semibold tracking-normal text-slate-950">
+                {formatCardValue(card.value, "currency" in card && card.currency)}
+              </p>
+            </div>
+            <span className="mt-1 size-3 rounded-full bg-emerald-500" />
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+
   return (
     <>
       <section className="mb-6 rounded-lg bg-emerald-800 px-5 py-6 text-white shadow-sm sm:px-6">
@@ -3663,26 +3839,21 @@ function DashboardSection({
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {cards.map((card) => (
-          <article
-            key={card.key}
-            className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-slate-500">
-                  {t(card.translationKey)}
-                </p>
-                <p className="mt-3 text-3xl font-semibold tracking-normal text-slate-950">
-                  {formatCardValue(card.value, "currency" in card && card.currency)}
-                </p>
-              </div>
-              <span className="mt-1 size-3 rounded-full bg-emerald-500" />
-            </div>
-          </article>
-        ))}
-      </section>
+      <div className="grid gap-6">
+        <section>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            {t("dashboard.financialSnapshot")}
+          </h3>
+          {renderCards(financialCards)}
+        </section>
+
+        <section>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            {t("dashboard.operationsSnapshot")}
+          </h3>
+          {renderCards(operationsCards)}
+        </section>
+      </div>
     </>
   );
 }
@@ -6845,7 +7016,7 @@ function PurchasesSection({
   onCloseModal: () => void;
   onDuplicateRowChange: (rowId: string | null) => void;
   onExpandedPurchaseChange: (purchaseId: number | null) => void;
-  onOpenModal: () => void;
+  onOpenModal: (purchase?: Purchase) => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   onUpdateForm: (value: PurchaseForm) => void;
   purchaseForm: PurchaseForm;
@@ -6873,7 +7044,7 @@ function PurchasesSection({
 
         <button
           type="button"
-          onClick={onOpenModal}
+          onClick={() => onOpenModal()}
           className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800"
         >
           {t("purchases.addButton")}
@@ -6965,6 +7136,13 @@ function PurchasesSection({
                 ) : null}
 
                 <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => onOpenModal(purchase)}
+                    className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    {t("common.viewEdit")}
+                  </button>
                   <button
                     type="button"
                     onClick={() =>
