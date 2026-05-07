@@ -341,13 +341,13 @@ const navigationItems: Array<{ key: SectionKey; translationKey: string }> = [
   { key: "settings", translationKey: "nav.settings" },
 ];
 
-const dashboardCards = [
-  { key: "activeJobs", translationKey: "cards.activeJobs", value: 18 },
-  { key: "todaysRevenue", translationKey: "cards.todaysRevenue", value: 12840, currency: true },
-  { key: "pendingPayments", translationKey: "cards.pendingPayments", value: 7 },
-  { key: "lowStockItems", translationKey: "cards.lowStockItems", value: 14 },
-  { key: "monthlyExpenses", translationKey: "cards.monthlyExpenses", value: 38500, currency: true },
-  { key: "completedJobs", translationKey: "cards.completedJobs", value: 126 },
+const dashboardCardDefinitions = [
+  { key: "activeJobs", translationKey: "cards.activeJobs" },
+  { key: "todaysRevenue", translationKey: "cards.todaysRevenue", currency: true },
+  { key: "pendingPayments", translationKey: "cards.pendingPayments" },
+  { key: "lowStockItems", translationKey: "cards.lowStockItems" },
+  { key: "monthlyExpenses", translationKey: "cards.monthlyExpenses", currency: true },
+  { key: "completedJobs", translationKey: "cards.completedJobs" },
 ] as const;
 
 const expenseCategories: ExpenseCategory[] = [
@@ -952,7 +952,7 @@ const emptyInvoiceForm: InvoiceForm = {
 };
 
 const demoDataStorageKey = "car-dc9-demo-data-v1";
-const activeSectionStorageKey = "car-dc9-active-section-v1";
+const activeSectionSessionStorageKey = "car-dc9-active-section-v1";
 
 type DemoPersistedData = {
   customers: Customer[];
@@ -1025,11 +1025,34 @@ const safeLocalStorageRemove = (key: string) => {
   }
 };
 
+const safeSessionStorageGet = <T,>(key: string, fallback: T): T => {
+  if (!isBrowser()) {
+    return fallback;
+  }
+
+  return safeParseJson(window.sessionStorage.getItem(key), fallback);
+};
+
+const safeSessionStorageSet = (key: string, value: unknown) => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Session navigation persistence should never block the app.
+  }
+};
+
 const isSectionKey = (value: string): value is SectionKey =>
   navigationItems.some((item) => item.key === value);
 
-const normalizeSaudiPhone = (value: string) => {
-  const digits = value.replace(/\D/g, "");
+const getSafeString = (value: unknown) =>
+  typeof value === "string" ? value : "";
+
+const normalizeSaudiPhone = (value: unknown) => {
+  const digits = getSafeString(value).replace(/\D/g, "");
 
   if (!digits) {
     return "";
@@ -1052,7 +1075,7 @@ const normalizeSaudiPhone = (value: string) => {
   return `+966${mobileDigits}`;
 };
 
-const formatSaudiPhone = (value: string) => {
+const formatSaudiPhone = (value: unknown) => {
   const normalizedPhone = normalizeSaudiPhone(value);
   const mobileDigits = normalizedPhone.replace(/\D/g, "").replace(/^966/, "");
 
@@ -1071,7 +1094,19 @@ const isValidSaudiPhone = (value: string) =>
   /^(\+9665\d{8})$/.test(normalizeSaudiPhone(value));
 
 const getSafeNumber = (value: unknown, fallback = 0) =>
-  typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  typeof value === "number" && Number.isFinite(value)
+    ? value
+    : typeof value === "string" && Number.isFinite(Number(value))
+      ? Number(value)
+      : fallback;
+
+const isStoredRecord = <T,>(value: T | null | undefined): value is T =>
+  Boolean(value) && typeof value === "object";
+
+const getSafePaymentStatus = (value: unknown): PaymentStatus =>
+  value === "paid" || value === "partial" || value === "unpaid"
+    ? value
+    : "unpaid";
 
 const getSyncedPersistedPayment = (
   paymentStatus: PaymentStatus,
@@ -1108,35 +1143,56 @@ const getStoredDemoData = () => {
   );
 
   return {
-    customers: (Array.isArray(storedData.customers) ? storedData.customers : fallback.customers).map(
-      (customer) => ({
+    customers: (Array.isArray(storedData.customers) ? storedData.customers : fallback.customers)
+      .filter(isStoredRecord)
+      .map((customer) => ({
         ...customer,
         phone: normalizeSaudiPhone(customer.phone),
-      }),
+      })),
+    vehicles: (Array.isArray(storedData.vehicles) ? storedData.vehicles : fallback.vehicles).filter(
+      isStoredRecord,
     ),
-    vehicles: Array.isArray(storedData.vehicles) ? storedData.vehicles : fallback.vehicles,
-    jobCards: (Array.isArray(storedData.jobCards) ? storedData.jobCards : fallback.jobCards).map(
+    jobCards: (Array.isArray(storedData.jobCards) ? storedData.jobCards : fallback.jobCards).filter(
+      isStoredRecord,
+    ).map(
       (jobCard) => {
         const totalAmount = getSafeNumber(jobCard.laborCost) + getSafeNumber(jobCard.partsCost);
         const syncedPayment = getSyncedPersistedPayment(
-          jobCard.paymentStatus,
+          getSafePaymentStatus(jobCard.paymentStatus),
           getSafeNumber(jobCard.paidAmount),
           totalAmount,
         );
 
         return {
           ...jobCard,
+          laborCost: getSafeNumber(jobCard.laborCost),
+          partsCost: getSafeNumber(jobCard.partsCost),
+          partsUsed: Array.isArray(jobCard.partsUsed)
+            ? jobCard.partsUsed.filter(isStoredRecord)
+            : [],
           paidAmount: syncedPayment.paidAmount,
           paymentStatus: syncedPayment.paymentStatus,
+          stockDeducted: jobCard.stockDeducted === true,
+          deductedParts: Array.isArray(jobCard.deductedParts)
+            ? jobCard.deductedParts.filter(isStoredRecord)
+            : [],
         };
       },
     ),
-    inventoryItems: Array.isArray(storedData.inventoryItems)
-      ? storedData.inventoryItems
-      : fallback.inventoryItems,
-    purchases: Array.isArray(storedData.purchases) ? storedData.purchases : fallback.purchases,
-    expenses: Array.isArray(storedData.expenses) ? storedData.expenses : fallback.expenses,
-    invoices: (Array.isArray(storedData.invoices) ? storedData.invoices : fallback.invoices).map(
+    inventoryItems: (
+      Array.isArray(storedData.inventoryItems)
+        ? storedData.inventoryItems
+        : fallback.inventoryItems
+    ).filter(isStoredRecord),
+    purchases: (Array.isArray(storedData.purchases) ? storedData.purchases : fallback.purchases).filter(
+      isStoredRecord,
+    ),
+    expenses: (Array.isArray(storedData.expenses) ? storedData.expenses : fallback.expenses).filter(
+      isStoredRecord,
+    ),
+    invoices: (Array.isArray(storedData.invoices) ? storedData.invoices : fallback.invoices).filter(
+      isStoredRecord,
+    ).map(
       (invoice) => {
         const legacyInvoice = invoice as Invoice & { taxPercentage?: number };
         const laborCost = getSafeNumber(invoice.laborCost);
@@ -1151,7 +1207,7 @@ const getStoredDemoData = () => {
         const taxAmount = subtotal * (taxPercentage / 100);
         const grandTotal = Math.max(0, subtotal + taxAmount - discount);
         const syncedPayment = getSyncedPersistedPayment(
-          invoice.paymentStatus,
+          getSafePaymentStatus(invoice.paymentStatus),
           getSafeNumber(invoice.paidAmount),
           grandTotal,
         );
@@ -1178,6 +1234,11 @@ const getStoredDemoData = () => {
       phoneNumber: normalizeSaudiPhone(
         storedData.settings?.phoneNumber ?? fallback.settings.phoneNumber,
       ),
+      defaultLanguage:
+        storedData.settings?.defaultLanguage === "ar" ||
+        storedData.settings?.defaultLanguage === "en"
+          ? storedData.settings.defaultLanguage
+          : fallback.settings.defaultLanguage,
     },
   };
 };
@@ -1191,8 +1252,8 @@ export default function Home() {
   );
   const [initialDemoData] = useState<DemoPersistedData>(getStoredDemoData);
   const [activeSection, setActiveSection] = useState<SectionKey>(() => {
-    const storedSection = safeLocalStorageGet<string>(
-      activeSectionStorageKey,
+    const storedSection = safeSessionStorageGet<string>(
+      activeSectionSessionStorageKey,
       "dashboard",
     );
 
@@ -1210,6 +1271,7 @@ export default function Home() {
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
   const [vehicleForm, setVehicleForm] = useState<VehicleForm>(emptyVehicleForm);
   const [editingVehicleId, setEditingVehicleId] = useState<number | null>(null);
+  const [vehicleModalSource, setVehicleModalSource] = useState<"vehicles" | "jobCard" | null>(null);
   const [historyVehicleId, setHistoryVehicleId] = useState<number | null>(null);
   const [vehicleTab, setVehicleTab] = useState<RecordTab>("active");
   const [jobCards, setJobCards] = useState<JobCard[]>(initialDemoData.jobCards);
@@ -1263,7 +1325,7 @@ export default function Home() {
       return;
     }
 
-    safeLocalStorageSet(activeSectionStorageKey, activeSection);
+    safeSessionStorageSet(activeSectionSessionStorageKey, activeSection);
   }, [activeSection, isAppHydrated]);
 
   useEffect(() => {
@@ -1479,6 +1541,57 @@ export default function Home() {
       .filter((expense) => expense.category === category)
       .reduce((total, expense) => total + expense.amount, 0),
   }));
+  const activeInvoiceJobCardIds = new Set(
+    invoices.filter((invoice) => !invoice.archived).map((invoice) => invoice.jobCardId),
+  );
+  const dashboardActiveJobs = jobCards.filter(
+    (jobCard) =>
+      !jobCard.archived &&
+      jobCard.status !== "completed" &&
+      jobCard.status !== "cancelled",
+  );
+  const dashboardTodaysRevenue = invoices.reduce(
+    (total, invoice) =>
+      !invoice.archived && isDateInReportRange(invoice.invoiceDate, "today")
+        ? total + invoice.paidAmount
+        : total,
+    0,
+  );
+  const dashboardPendingInvoices = invoices.filter(
+    (invoice) =>
+      !invoice.archived &&
+      (invoice.remainingBalance > 0 || invoice.paymentStatus !== "paid"),
+  );
+  const dashboardPendingJobCards = jobCards.filter((jobCard) => {
+    if (jobCard.archived || activeInvoiceJobCardIds.has(jobCard.id)) {
+      return false;
+    }
+
+    const totalAmount = jobCard.laborCost + jobCard.partsCost;
+
+    return (
+      Math.max(0, totalAmount - jobCard.paidAmount) > 0 ||
+      jobCard.paymentStatus !== "paid"
+    );
+  });
+  const dashboardLowStockItems = inventoryItems.filter(
+    (item) => !item.archived && item.stockQuantity <= item.minimumStock,
+  );
+  const dashboardCompletedJobs = jobCards.filter(
+    (jobCard) => !jobCard.archived && jobCard.status === "completed",
+  );
+  const dashboardStats = {
+    activeJobs: dashboardActiveJobs.length,
+    todaysRevenue: dashboardTodaysRevenue,
+    pendingPayments: dashboardPendingInvoices.length + dashboardPendingJobCards.length,
+    lowStockItems: dashboardLowStockItems.length,
+    monthlyExpenses: monthlyExpenseTotal,
+    completedJobs: dashboardCompletedJobs.length,
+  };
+  const dashboardCards = dashboardCardDefinitions.map((card) => ({
+    ...card,
+    value: dashboardStats[card.key],
+  }));
   const reportInvoices = invoices.filter(
     (invoice) => !invoice.archived && isDateInReportRange(invoice.invoiceDate, reportRange),
   );
@@ -1493,9 +1606,6 @@ export default function Home() {
       !jobCard.archived &&
       jobCard.status === "completed" &&
       isDateInReportRange(jobCard.date, reportRange),
-  );
-  const activeInvoiceJobCardIds = new Set(
-    invoices.filter((invoice) => !invoice.archived).map((invoice) => invoice.jobCardId),
   );
   const reportCompletedWorkValue = reportCompletedJobs.reduce(
     (total, jobCard) => total + jobCard.laborCost + jobCard.partsCost,
@@ -1785,36 +1895,6 @@ export default function Home() {
     }, []);
   };
 
-  const getInsufficientStockItemName = (partsUsed: JobPart[]) => {
-    const usedQuantities = partsUsed.reduce<Record<number, number>>((quantities, part) => {
-      if (part.itemType === "service") {
-        return quantities;
-      }
-
-      return {
-        ...quantities,
-        [part.inventoryItemId]:
-          (quantities[part.inventoryItemId] ?? 0) + part.quantity,
-      };
-    }, {});
-
-    const insufficientItemId = Object.entries(usedQuantities).find(
-      ([itemId, quantity]) => {
-        const inventoryItem = inventoryItems.find((item) => item.id === Number(itemId));
-        return inventoryItem ? quantity > inventoryItem.stockQuantity : false;
-      },
-    )?.[0];
-
-    return insufficientItemId
-      ? inventoryItems.find((item) => item.id === Number(insufficientItemId))?.itemName
-      : undefined;
-  };
-
-  const hasDuplicateJobParts = (partsUsed: JobPart[]) => {
-    const selectedItemIds = partsUsed.map((part) => part.inventoryItemId);
-    return new Set(selectedItemIds).size !== selectedItemIds.length;
-  };
-
   const getStockDeductionQuantities = (partsUsed: JobPart[]) => {
     return partsUsed.reduce<Record<number, number>>((quantities, part) => {
       if (part.itemType === "service") {
@@ -1829,17 +1909,66 @@ export default function Home() {
     }, {});
   };
 
-  const deductJobPartsFromStock = (partsUsed: JobPart[]) => {
+  const getInsufficientStockItemName = (
+    partsUsed: JobPart[],
+    restorableParts: JobPart[] = [],
+  ) => {
     const usedQuantities = getStockDeductionQuantities(partsUsed);
+    const restorableQuantities = getStockDeductionQuantities(restorableParts);
+
+    const insufficientItemId = Object.entries(usedQuantities).find(
+      ([itemId, quantity]) => {
+        const inventoryItem = inventoryItems.find((item) => item.id === Number(itemId));
+        const restorableQuantity = restorableQuantities[Number(itemId)] ?? 0;
+
+        return inventoryItem
+          ? quantity > inventoryItem.stockQuantity + restorableQuantity
+          : false;
+      },
+    )?.[0];
+
+    return insufficientItemId
+      ? inventoryItems.find((item) => item.id === Number(insufficientItemId))?.itemName
+      : undefined;
+  };
+
+  const hasDuplicateJobParts = (partsUsed: JobPart[]) => {
+    const selectedItemIds = partsUsed.map((part) => part.inventoryItemId);
+    return new Set(selectedItemIds).size !== selectedItemIds.length;
+  };
+
+  const applyJobStockAdjustment = (
+    previousDeductedParts: JobPart[],
+    nextDeductedParts: JobPart[],
+  ) => {
+    const previousQuantities = getStockDeductionQuantities(previousDeductedParts);
+    const nextQuantities = getStockDeductionQuantities(nextDeductedParts);
+    const adjustedItemIds = new Set([
+      ...Object.keys(previousQuantities),
+      ...Object.keys(nextQuantities),
+    ]);
+
+    if (
+      adjustedItemIds.size === 0 ||
+      [...adjustedItemIds].every(
+        (itemId) =>
+          (previousQuantities[Number(itemId)] ?? 0) ===
+          (nextQuantities[Number(itemId)] ?? 0),
+      )
+    ) {
+      return;
+    }
 
     setInventoryItems((currentItems) =>
-      currentItems.map((item) => ({
-        ...item,
-        stockQuantity: Math.max(
-          0,
-          item.stockQuantity - (usedQuantities[item.id] ?? 0),
-        ),
-      })),
+      currentItems.map((item) => {
+        const quantityDelta =
+          (nextQuantities[item.id] ?? 0) - (previousQuantities[item.id] ?? 0);
+
+        return {
+          ...item,
+          stockQuantity: Math.max(0, item.stockQuantity - quantityDelta),
+        };
+      }),
     );
   };
 
@@ -1932,6 +2061,8 @@ export default function Home() {
   };
 
   const openVehicleModal = (vehicle?: Vehicle) => {
+    setVehicleModalSource("vehicles");
+
     if (vehicle) {
       setEditingVehicleId(vehicle.id);
       setVehicleForm({
@@ -1956,10 +2087,18 @@ export default function Home() {
     setIsVehicleModalOpen(true);
   };
 
+  const openVehicleModalFromJobCard = () => {
+    setEditingVehicleId(null);
+    setVehicleForm(emptyVehicleForm);
+    setVehicleModalSource("jobCard");
+    setIsVehicleModalOpen(true);
+  };
+
   const closeVehicleModal = () => {
     setIsVehicleModalOpen(false);
     setVehicleForm(emptyVehicleForm);
     setEditingVehicleId(null);
+    setVehicleModalSource(null);
   };
 
   const saveVehicle = (event: FormEvent<HTMLFormElement>) => {
@@ -2012,6 +2151,12 @@ export default function Home() {
     };
 
     setVehicles((currentVehicles) => [nextVehicle, ...currentVehicles]);
+    if (vehicleModalSource === "jobCard") {
+      setJobCardForm((currentForm) => ({
+        ...currentForm,
+        vehicleId: String(nextVehicle.id),
+      }));
+    }
     closeVehicleModal();
   };
 
@@ -2099,6 +2244,12 @@ export default function Home() {
     setJobCardForm(emptyJobCardForm);
   };
 
+  const openNewJobCardFromDashboard = () => {
+    setActiveSection("jobCards");
+    setJobCardTab("active");
+    openJobCardModal();
+  };
+
   const saveJobCard = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -2137,10 +2288,13 @@ export default function Home() {
       totalAmount,
     );
     const isSavingCompletedJob = jobCardForm.status === "completed";
-    const shouldDeductStock =
-      isSavingCompletedJob && existingJobCard?.stockDeducted !== true;
+    const previousDeductedParts =
+      existingJobCard?.stockDeducted === true ? existingJobCard.deductedParts : [];
+    const nextDeductedParts = isSavingCompletedJob
+      ? partsUsed.filter((part) => part.itemType === "stock")
+      : [];
     const insufficientStockItemName = isSavingCompletedJob
-      ? getInsufficientStockItemName(partsUsed)
+      ? getInsufficientStockItemName(partsUsed, previousDeductedParts)
       : undefined;
 
     if (insufficientStockItemName) {
@@ -2171,10 +2325,8 @@ export default function Home() {
       paidAmount: syncedPayment.paidAmount,
       paymentStatus: syncedPayment.paymentStatus,
       notes: jobCardForm.notes.trim(),
-      stockDeducted: existingJobCard?.stockDeducted === true || shouldDeductStock,
-      deductedParts: shouldDeductStock
-        ? partsUsed.filter((part) => part.itemType === "stock")
-        : existingJobCard?.deductedParts ?? [],
+      stockDeducted: nextDeductedParts.length > 0,
+      deductedParts: nextDeductedParts,
     };
 
     if (editingJobCardId) {
@@ -2189,9 +2341,7 @@ export default function Home() {
             : jobCard,
         ),
       );
-      if (shouldDeductStock) {
-        deductJobPartsFromStock(partsUsed);
-      }
+      applyJobStockAdjustment(previousDeductedParts, nextDeductedParts);
       closeJobCardModal();
       return;
     }
@@ -2203,9 +2353,7 @@ export default function Home() {
     };
 
     setJobCards((currentJobCards) => [nextJobCard, ...currentJobCards]);
-    if (shouldDeductStock) {
-      deductJobPartsFromStock(partsUsed);
-    }
+    applyJobStockAdjustment([], nextDeductedParts);
     closeJobCardModal();
   };
 
@@ -2218,6 +2366,10 @@ export default function Home() {
       return;
     }
 
+    if (archived && targetJobCard?.stockDeducted) {
+      applyJobStockAdjustment(targetJobCard.deductedParts, []);
+    }
+
     setJobCards((currentJobCards) =>
       currentJobCards.map((jobCard) =>
         jobCard.id === jobCardId
@@ -2225,6 +2377,8 @@ export default function Home() {
               ...jobCard,
               archived,
               status: archived ? "cancelled" : "inWorkshop",
+              stockDeducted: archived ? false : jobCard.stockDeducted,
+              deductedParts: archived ? [] : jobCard.deductedParts,
             }
           : jobCard,
       ),
@@ -2675,7 +2829,6 @@ export default function Home() {
     const defaultDemoData = getDefaultDemoData();
 
     safeLocalStorageRemove(demoDataStorageKey);
-    safeLocalStorageRemove(activeSectionStorageKey);
     setCustomers(defaultDemoData.customers);
     setVehicles(defaultDemoData.vehicles);
     setJobCards(defaultDemoData.jobCards);
@@ -2905,6 +3058,7 @@ export default function Home() {
                 onArchivedChange={setJobCardArchived}
                 onCloseModal={closeJobCardModal}
                 onOpenModal={openJobCardModal}
+                onOpenVehicleModal={openVehicleModalFromJobCard}
                 onSave={saveJobCard}
                 onSearchChange={setJobCardSearch}
                 onTabChange={setJobCardTab}
@@ -3035,7 +3189,12 @@ export default function Home() {
                 t={t}
               />
             ) : (
-              <DashboardSection formatCardValue={formatCardValue} t={t} />
+              <DashboardSection
+                cards={dashboardCards}
+                formatCardValue={formatCardValue}
+                onCreateJobCard={openNewJobCardFromDashboard}
+                t={t}
+              />
             )}
           </div>
         </section>
@@ -3049,6 +3208,16 @@ export default function Home() {
           onClose={() => setPrintInvoiceId(null)}
           settings={settings}
           t={t}
+        />
+      ) : null}
+      {activeSection !== "vehicles" && isVehicleModalOpen ? (
+        <VehicleModal
+          isEditing={editingVehicleId !== null}
+          onClose={closeVehicleModal}
+          onSave={saveVehicle}
+          onUpdateForm={setVehicleForm}
+          t={t}
+          vehicleForm={vehicleForm}
         />
       ) : null}
       {toastMessage ? (
@@ -3108,10 +3277,19 @@ function NavigationButton({
 }
 
 function DashboardSection({
+  cards,
   formatCardValue,
+  onCreateJobCard,
   t,
 }: {
+  cards: Array<{
+    key: string;
+    translationKey: string;
+    value: number;
+    currency?: boolean;
+  }>;
   formatCardValue: (value: number, currency?: boolean) => string;
+  onCreateJobCard: () => void;
   t: (key: string) => string;
 }) {
   return (
@@ -3132,6 +3310,7 @@ function DashboardSection({
 
           <button
             type="button"
+            onClick={onCreateJobCard}
             className="h-11 rounded-md bg-white px-4 text-sm font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-50"
           >
             {t("dashboard.quickAction")}
@@ -3140,7 +3319,7 @@ function DashboardSection({
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {dashboardCards.map((card) => (
+        {cards.map((card) => (
           <article
             key={card.key}
             className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
@@ -3384,8 +3563,8 @@ function CustomersSection({
 function CustomerField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase text-slate-400">{label}</dt>
-      <dd className="mt-1 text-sm font-semibold text-slate-800">{value}</dd>
+      <dt className="text-xs font-medium uppercase leading-5 text-slate-400">{label}</dt>
+      <dd className="mt-1 break-words text-sm font-semibold leading-5 text-slate-800">{value}</dd>
     </div>
   );
 }
@@ -3417,7 +3596,7 @@ function CustomerModal({
         onSubmit={onSave}
         className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-w-4xl"
       >
-        <div className="shrink-0 border-b border-slate-100 p-5">
+        <div className="shrink-0 border-b border-slate-100 px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold tracking-normal">
@@ -3437,7 +3616,7 @@ function CustomerModal({
           </div>
         </div>
 
-        <div className="max-h-[70vh] flex-1 overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-28">
           <div className="grid gap-4">
             <FormField
               label={t("customers.fields.name")}
@@ -3853,7 +4032,7 @@ function VehicleModal({
           </div>
         </div>
 
-        <div className="max-h-[70vh] flex-1 overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-28">
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField
               label={t("vehicles.fields.ownerName")}
@@ -3986,7 +4165,7 @@ function ServiceHistoryModal({
           </div>
         </div>
 
-        <div className="max-h-[70vh] flex-1 overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-28">
           {sortedJobCards.length > 0 ? (
             <div className="grid gap-4">
               {sortedJobCards.map((jobCard) => (
@@ -4079,6 +4258,7 @@ function JobCardsSection({
   onArchivedChange,
   onCloseModal,
   onOpenModal,
+  onOpenVehicleModal,
   onSave,
   onSearchChange,
   onTabChange,
@@ -4098,6 +4278,7 @@ function JobCardsSection({
   onArchivedChange: (jobCardId: number, archived: boolean) => void;
   onCloseModal: () => void;
   onOpenModal: (jobCard?: JobCard) => void;
+  onOpenVehicleModal: () => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   onSearchChange: (value: string) => void;
   onTabChange: (value: RecordTab) => void;
@@ -4261,12 +4442,13 @@ function JobCardsSection({
       )}
 
       {isModalOpen ? (
-          <JobCardModal
-            formatMoney={formatMoney}
-            inventoryItems={inventoryItems}
-            isEditing={isEditing}
+        <JobCardModal
+          formatMoney={formatMoney}
+          inventoryItems={inventoryItems}
+          isEditing={isEditing}
           jobCardForm={jobCardForm}
           onClose={onCloseModal}
+          onOpenVehicleModal={onOpenVehicleModal}
           onSave={onSave}
           onUpdateForm={onUpdateForm}
           t={t}
@@ -4283,6 +4465,7 @@ function JobCardModal({
   isEditing,
   jobCardForm,
   onClose,
+  onOpenVehicleModal,
   onSave,
   onUpdateForm,
   t,
@@ -4293,12 +4476,16 @@ function JobCardModal({
   isEditing: boolean;
   jobCardForm: JobCardForm;
   onClose: () => void;
+  onOpenVehicleModal: () => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   onUpdateForm: (value: JobCardForm) => void;
   t: (key: string) => string;
   vehicles: Vehicle[];
 }) {
   const [duplicatePartRowId, setDuplicatePartRowId] = useState<string | null>(null);
+  const [isPartsExpanded, setIsPartsExpanded] = useState(
+    jobCardForm.partsUsed.length > 0,
+  );
   const selectedVehicle = vehicles.find(
     (vehicle) => vehicle.id === Number(jobCardForm.vehicleId),
   );
@@ -4333,6 +4520,7 @@ function JobCardModal({
       : `part-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   const addPartLine = () => {
+    setIsPartsExpanded(true);
     onUpdateForm({
       ...jobCardForm,
       partsUsed: [
@@ -4429,253 +4617,269 @@ function JobCardModal({
           </div>
         </div>
 
-        <div className="max-h-[70vh] flex-1 overflow-y-auto p-5">
-          <div className="grid gap-4">
-            <FormField
-              label={t("jobCards.fields.jobNumber")}
-              value={jobCardForm.jobNumber}
-              onChange={(value) => onUpdateForm({ ...jobCardForm, jobNumber: value })}
-              placeholder={t("jobCards.form.jobNumberPlaceholder")}
-              required
-            />
-
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">
-                {t("jobCards.fields.vehicle")}
-              </span>
-              <select
-                value={jobCardForm.vehicleId}
-                onChange={(event) =>
-                  onUpdateForm({ ...jobCardForm, vehicleId: event.target.value })
-                }
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-24 sm:p-5 sm:pb-24">
+          <div className="grid gap-3">
+            <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 lg:grid-cols-3">
+              <FormField
+                label={t("jobCards.fields.jobNumber")}
+                value={jobCardForm.jobNumber}
+                onChange={(value) => onUpdateForm({ ...jobCardForm, jobNumber: value })}
+                placeholder={t("jobCards.form.jobNumberPlaceholder")}
                 required
-                className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
-              >
-                <option value="">{t("jobCards.form.vehiclePlaceholder")}</option>
-                {vehicles.map((vehicle) => (
-                  <option key={vehicle.id} value={vehicle.id}>
-                    {vehicle.plateNumber} - {vehicle.make} {vehicle.model}
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
 
-            {selectedVehicle ? (
-              <section className="grid gap-4 rounded-lg bg-slate-50 p-4 sm:grid-cols-3">
-                <CustomerField
-                  label={t("jobCards.fields.customerName")}
-                  value={selectedVehicle.ownerName}
-                />
-                <CustomerField
-                  label={t("jobCards.fields.vehicleName")}
-                  value={`${selectedVehicle.make} ${selectedVehicle.model}`}
-                />
-                <CustomerField
-                  label={t("jobCards.fields.plateNumber")}
-                  value={selectedVehicle.plateNumber}
-                />
-              </section>
-            ) : null}
+              <FormField
+                inputType="date"
+                label={t("jobCards.fields.date")}
+                value={jobCardForm.date}
+                onChange={(value) => onUpdateForm({ ...jobCardForm, date: value })}
+                placeholder={t("jobCards.form.datePlaceholder")}
+                required
+              />
 
-            <FormField
-              inputType="date"
-              label={t("jobCards.fields.date")}
-              value={jobCardForm.date}
-              onChange={(value) => onUpdateForm({ ...jobCardForm, date: value })}
-              placeholder={t("jobCards.form.datePlaceholder")}
-              required
-            />
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">
+                  {t("jobCards.fields.status")}
+                </span>
+                <select
+                  value={jobCardForm.status}
+                  onChange={(event) =>
+                    onUpdateForm({
+                      ...jobCardForm,
+                      status: event.target.value as JobCardStatus,
+                    })
+                  }
+                  className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
+                >
+                  <option value="inWorkshop">{t("vehicles.status.inWorkshop")}</option>
+                  <option value="completed">{t("vehicles.status.completed")}</option>
+                  <option value="cancelled">{t("vehicles.status.cancelled")}</option>
+                </select>
+              </label>
 
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">
-                {t("jobCards.fields.status")}
-              </span>
-              <select
-                value={jobCardForm.status}
-                onChange={(event) =>
-                  onUpdateForm({
-                    ...jobCardForm,
-                    status: event.target.value as JobCardStatus,
-                  })
-                }
-                className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
-              >
-                <option value="inWorkshop">{t("vehicles.status.inWorkshop")}</option>
-                <option value="completed">{t("vehicles.status.completed")}</option>
-                <option value="cancelled">{t("vehicles.status.cancelled")}</option>
-              </select>
-            </label>
+              <label className="block lg:col-span-3">
+                <span className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-slate-700">
+                    {t("jobCards.fields.vehicle")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onOpenVehicleModal}
+                    className="h-8 rounded-md border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                  >
+                    {t("jobCards.form.addNewVehicle")}
+                  </button>
+                </span>
+                <select
+                  value={jobCardForm.vehicleId}
+                  onChange={(event) =>
+                    onUpdateForm({ ...jobCardForm, vehicleId: event.target.value })
+                  }
+                  required
+                  className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
+                >
+                  <option value="">{t("jobCards.form.vehiclePlaceholder")}</option>
+                  {vehicles.map((vehicle) => (
+                    <option key={vehicle.id} value={vehicle.id}>
+                      {vehicle.plateNumber} - {vehicle.make} {vehicle.model}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  {t("jobCards.form.vehicleHelper")}
+                </p>
+              </label>
 
-            <FormField
-              label={t("jobCards.fields.complaint")}
-              value={jobCardForm.complaint}
-              onChange={(value) => onUpdateForm({ ...jobCardForm, complaint: value })}
-              placeholder={t("jobCards.form.complaintPlaceholder")}
-              required
-            />
+              {selectedVehicle ? (
+                <div className="grid gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3 sm:grid-cols-3 lg:col-span-3">
+                  <CustomerField
+                    label={t("jobCards.fields.customerName")}
+                    value={selectedVehicle.ownerName}
+                  />
+                  <CustomerField
+                    label={t("jobCards.fields.vehicleName")}
+                    value={`${selectedVehicle.make} ${selectedVehicle.model}`}
+                  />
+                  <CustomerField
+                    label={t("jobCards.fields.plateNumber")}
+                    value={selectedVehicle.plateNumber}
+                  />
+                </div>
+              ) : null}
+            </section>
 
-            <FormField
-              label={t("jobCards.fields.workPerformed")}
-              value={jobCardForm.workPerformed}
-              onChange={(value) => onUpdateForm({ ...jobCardForm, workPerformed: value })}
-              placeholder={t("jobCards.form.workPlaceholder")}
-              required
-            />
+            <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 lg:grid-cols-3">
+              <FormField
+                label={t("jobCards.fields.complaint")}
+                value={jobCardForm.complaint}
+                onChange={(value) => onUpdateForm({ ...jobCardForm, complaint: value })}
+                placeholder={t("jobCards.form.complaintPlaceholder")}
+                required
+              />
 
-            <FormField
-              label={t("jobCards.fields.mechanic")}
-              value={jobCardForm.mechanic}
-              onChange={(value) => onUpdateForm({ ...jobCardForm, mechanic: value })}
-              placeholder={t("jobCards.form.mechanicPlaceholder")}
-              required
-            />
+              <FormField
+                label={t("jobCards.fields.mechanic")}
+                value={jobCardForm.mechanic}
+                onChange={(value) => onUpdateForm({ ...jobCardForm, mechanic: value })}
+                placeholder={t("jobCards.form.mechanicPlaceholder")}
+                required
+              />
 
-            <FormField
-              inputType="number"
-              label={t("jobCards.fields.laborCost")}
-              min="0"
-              value={jobCardForm.laborCost}
-              onChange={(value) => onUpdateForm({ ...jobCardForm, laborCost: value })}
-              placeholder={t("jobCards.form.laborCostPlaceholder")}
-              required
-            />
+              <FormField
+                inputType="number"
+                label={t("jobCards.fields.laborCost")}
+                min="0"
+                value={jobCardForm.laborCost}
+                onChange={(value) => onUpdateForm({ ...jobCardForm, laborCost: value })}
+                placeholder={t("jobCards.form.laborCostPlaceholder")}
+                required
+              />
 
-            <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
+              <FormField
+                label={t("jobCards.fields.workPerformed")}
+                value={jobCardForm.workPerformed}
+                onChange={(value) => onUpdateForm({ ...jobCardForm, workPerformed: value })}
+                placeholder={t("jobCards.form.workPlaceholder")}
+                required
+              />
+            </section>
+
+            <section className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-slate-900">
                     {t("jobCards.parts.title")}
                   </h3>
                   <p className="mt-1 text-xs text-slate-500">
                     {t("jobCards.parts.subtitle")}
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                      {t("jobCards.parts.partsCount")}: {jobCardForm.partsUsed.length}
+                    </span>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                      {t("jobCards.fields.partsCost")}: {formatMoney(partsTotal)}
+                    </span>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={addPartLine}
-                  className="h-9 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
-                >
-                  {t("jobCards.parts.addPart")}
-                </button>
+                <div className="flex flex-wrap gap-2 sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsPartsExpanded((current) => !current)}
+                    className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    {t(
+                      isPartsExpanded
+                        ? "jobCards.parts.hideParts"
+                        : "jobCards.parts.manageParts",
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={addPartLine}
+                    className="h-9 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                  >
+                    {t("jobCards.parts.addPart")}
+                  </button>
+                </div>
               </div>
 
-              <div className="mt-4">
-                {jobCardForm.partsUsed.length > 0 ? (
-                  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                    <div className="hidden border-b border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold uppercase text-slate-500 lg:grid lg:grid-cols-[2.2fr_1.2fr_1fr_1fr_1fr_auto] lg:items-center lg:gap-3">
-                      <span>{t("jobCards.parts.inventoryItem")}</span>
-                      <span className="text-center">{t("jobCards.parts.availableStockLabel")}</span>
-                      <span className="text-center">{t("jobCards.parts.quantity")}</span>
-                      <span className="text-center">{t("jobCards.parts.unitSellingPrice")}</span>
-                      <span className="text-center">{t("jobCards.parts.lineTotal")}</span>
-                      <span className="text-end">{t("jobCards.parts.actions")}</span>
-                    </div>
+              {isPartsExpanded ? (
+                <div className="mt-3 grid gap-3">
+                  {jobCardForm.partsUsed.length > 0 ? (
+                    <div className="grid gap-3">
+                      {jobCardForm.partsUsed.map((partLine) => {
+                        const selectedItem = inventoryItems.find(
+                          (item) => item.id === Number(partLine.inventoryItemId),
+                        );
+                        const quantity = getFormCost(partLine.quantity);
+                        const showStockWarning =
+                          selectedItem?.itemType === "stock" &&
+                          quantity > selectedItem.stockQuantity;
+                        const showDuplicateWarning =
+                          duplicatePartRowId === partLine.rowId ||
+                          (Boolean(partLine.inventoryItemId) &&
+                            selectedInventoryItemIds.filter(
+                              (itemId) => itemId === partLine.inventoryItemId,
+                            ).length > 1);
 
-                    {jobCardForm.partsUsed.map((partLine) => {
-                      const selectedItem = inventoryItems.find(
-                        (item) => item.id === Number(partLine.inventoryItemId),
-                      );
-                      const quantity = getFormCost(partLine.quantity);
-                      const showStockWarning =
-                        selectedItem?.itemType === "stock" &&
-                        quantity > selectedItem.stockQuantity;
-                      const showDuplicateWarning =
-                        duplicatePartRowId === partLine.rowId ||
-                        (Boolean(partLine.inventoryItemId) &&
-                          selectedInventoryItemIds.filter(
-                            (itemId) => itemId === partLine.inventoryItemId,
-                          ).length > 1);
-
-                      return (
-                        <div
-                          key={partLine.rowId}
-                          className="border-b border-slate-100 p-3 transition last:border-b-0 hover:bg-slate-50/70"
-                        >
-                          <div className="mb-3 flex flex-col gap-2 lg:hidden">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-950">
-                                {selectedItem?.itemName ?? t("jobCards.parts.emptyRow")}
-                              </p>
-                              <p className="mt-1 text-sm text-slate-500">
-                                {selectedItem?.arabicItemName || t("common.notAvailable")}
-                              </p>
-                              {selectedItem ? (
-                                <p className="mt-1 text-xs font-medium text-slate-500">
-                                  {selectedItem.sku}
+                        return (
+                          <div
+                            key={partLine.rowId}
+                            className="rounded-lg border border-slate-200 bg-white p-3 transition hover:border-slate-300"
+                          >
+                            <div className="mb-3 flex flex-col gap-2 border-b border-slate-100 pb-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-slate-950">
+                                  {selectedItem?.itemName ?? t("jobCards.parts.emptyRow")}
                                 </p>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          <div className="grid gap-3 lg:grid-cols-[2.2fr_1.2fr_1fr_1fr_1fr_auto] lg:items-center">
-                            <label className="block">
-                              <span className="text-sm font-medium text-slate-700 lg:sr-only">
-                                {t("jobCards.parts.inventoryItem")}
-                              </span>
-                              <select
-                                value={partLine.inventoryItemId}
-                                onChange={(event) => {
-                                  const nextInventoryItemId = event.target.value;
-                                  const isDuplicateItem =
-                                    Boolean(nextInventoryItemId) &&
-                                    selectedInventoryItemIds.includes(nextInventoryItemId) &&
-                                    partLine.inventoryItemId !== nextInventoryItemId;
-
-                                  if (isDuplicateItem) {
-                                    setDuplicatePartRowId(partLine.rowId);
-                                    return;
-                                  }
-
-                                  const selectedInventoryItem = inventoryItems.find(
-                                    (item) => item.id === Number(nextInventoryItemId),
-                                  );
-                                  setDuplicatePartRowId(null);
-
-                                  updatePartLine(partLine.rowId, {
-                                    inventoryItemId: nextInventoryItemId,
-                                    unitSellingPrice: selectedInventoryItem
-                                      ? String(selectedInventoryItem.sellingPrice)
-                                      : "0",
-                                  });
-                                }}
-                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 lg:mt-0"
-                              >
-                                <option value="">
-                                  {t("jobCards.parts.selectItem")}
-                                </option>
-                                {activeInventoryItems.map((item) => (
-                                  <option
-                                    key={item.id}
-                                    value={item.id}
-                                    disabled={
-                                      selectedInventoryItemIds.includes(String(item.id)) &&
-                                      partLine.inventoryItemId !== String(item.id)
-                                    }
-                                  >
-                                    {item.itemName} - {item.sku}
-                                  </option>
-                                ))}
-                              </select>
-                              {selectedItem ? (
-                                <div className="mt-2 hidden lg:block">
-                                  <p className="text-sm font-semibold text-slate-900">
-                                    {selectedItem.itemName}
-                                  </p>
-                                  <p className="mt-0.5 text-xs text-slate-500">
-                                    {selectedItem.arabicItemName || t("common.notAvailable")}
-                                  </p>
-                                  <p className="mt-0.5 text-xs font-medium text-slate-500">
+                                <p className="mt-1 text-sm text-slate-500">
+                                  {selectedItem?.arabicItemName || t("common.notAvailable")}
+                                </p>
+                                {selectedItem ? (
+                                  <p className="mt-1 text-xs font-medium text-slate-500">
                                     {selectedItem.sku}
                                   </p>
-                                </div>
-                              ) : null}
-                            </label>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(120px,0.85fr)_minmax(120px,0.85fr)_minmax(130px,0.9fr)_minmax(150px,0.95fr)] lg:items-end">
+                              <label className="block">
+                                <span className="text-sm font-medium text-slate-700">
+                                  {t("jobCards.parts.inventoryItem")}
+                                </span>
+                                <select
+                                  value={partLine.inventoryItemId}
+                                  onChange={(event) => {
+                                    const nextInventoryItemId = event.target.value;
+                                    const isDuplicateItem =
+                                      Boolean(nextInventoryItemId) &&
+                                      selectedInventoryItemIds.includes(nextInventoryItemId) &&
+                                      partLine.inventoryItemId !== nextInventoryItemId;
+
+                                    if (isDuplicateItem) {
+                                      setDuplicatePartRowId(partLine.rowId);
+                                      return;
+                                    }
+
+                                    const selectedInventoryItem = inventoryItems.find(
+                                      (item) => item.id === Number(nextInventoryItemId),
+                                    );
+                                    setDuplicatePartRowId(null);
+
+                                    updatePartLine(partLine.rowId, {
+                                      inventoryItemId: nextInventoryItemId,
+                                      unitSellingPrice: selectedInventoryItem
+                                        ? String(selectedInventoryItem.sellingPrice)
+                                        : "0",
+                                    });
+                                  }}
+                                  className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
+                                >
+                                  <option value="">
+                                    {t("jobCards.parts.selectItem")}
+                                  </option>
+                                  {activeInventoryItems.map((item) => (
+                                    <option
+                                      key={item.id}
+                                      value={item.id}
+                                      disabled={
+                                        selectedInventoryItemIds.includes(String(item.id)) &&
+                                        partLine.inventoryItemId !== String(item.id)
+                                      }
+                                    >
+                                      {item.itemName} - {item.sku}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
 
                             <div>
-                              <p className="text-xs font-medium uppercase text-slate-400 lg:sr-only">
+                              <p className="text-sm font-medium text-slate-700">
                                 {t("jobCards.parts.availableStockLabel")}
                               </p>
-                              <div className="mt-1 flex flex-wrap gap-2 lg:mt-0 lg:flex-col lg:items-center">
+                              <div className="mt-1 flex flex-wrap gap-2">
                                 {selectedItem ? (
                                   <>
                                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
@@ -4699,7 +4903,7 @@ function JobCardModal({
                             </div>
 
                             <label className="block">
-                              <span className="text-sm font-medium text-slate-700 lg:sr-only">
+                              <span className="text-sm font-medium text-slate-700">
                                 {t("jobCards.parts.quantity")}
                               </span>
                               <input
@@ -4712,12 +4916,12 @@ function JobCardModal({
                                   })
                                 }
                                 placeholder={t("jobCards.parts.quantityPlaceholder")}
-                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 lg:mt-0"
+                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
                               />
                             </label>
 
                             <label className="block">
-                              <span className="text-sm font-medium text-slate-700 lg:sr-only">
+                              <span className="text-sm font-medium text-slate-700">
                                 {t("jobCards.parts.unitSellingPrice")}
                               </span>
                               <input
@@ -4730,52 +4934,66 @@ function JobCardModal({
                                   })
                                 }
                                 placeholder={t("jobCards.parts.pricePlaceholder")}
-                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 lg:mt-0"
+                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
                               />
                             </label>
 
-                            <div>
-                              <p className="text-xs font-medium uppercase text-slate-400 lg:sr-only">
-                                {t("jobCards.parts.lineTotal")}
-                              </p>
-                              <p className="mt-1 text-base font-bold text-slate-950 lg:mt-0 lg:text-center">
-                                {formatMoney(getPartLineTotal(partLine))}
-                              </p>
+                            <div className="flex items-end justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 md:col-span-2 lg:col-span-1">
+                              <div>
+                                <p className="text-sm font-medium text-slate-700">
+                                  {t("jobCards.parts.lineTotal")}
+                                </p>
+                                <p className="mt-1 text-base font-bold text-slate-950">
+                                  {formatMoney(getPartLineTotal(partLine))}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removePartLine(partLine.rowId)}
+                                className="h-9 shrink-0 rounded-md border border-rose-200 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                              >
+                                {t("common.remove")}
+                              </button>
+                            </div>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => removePartLine(partLine.rowId)}
-                              className="h-8 rounded-md border border-rose-200 px-2.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
-                            >
-                              {t("common.remove")}
-                            </button>
+                            {showStockWarning || showDuplicateWarning ? (
+                              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                                {showStockWarning ? (
+                                  <span className="rounded-full bg-rose-50 px-3 py-1 font-semibold text-rose-700">
+                                    {t("jobCards.parts.stockWarning")}
+                                  </span>
+                                ) : null}
+                                {showDuplicateWarning ? (
+                                  <span className="rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700">
+                                    {t("jobCards.parts.duplicateWarning")}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </div>
-
-                          {showStockWarning || showDuplicateWarning ? (
-                            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                              {showStockWarning ? (
-                                <span className="rounded-full bg-rose-50 px-3 py-1 font-semibold text-rose-700">
-                                  {t("jobCards.parts.stockWarning")}
-                                </span>
-                              ) : null}
-                              {showDuplicateWarning ? (
-                                <span className="rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700">
-                                  {t("jobCards.parts.duplicateWarning")}
-                                </span>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-5 text-center text-sm text-slate-500">
-                    {t("jobCards.parts.empty")}
-                  </p>
-                )}
-              </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-5 text-center">
+                      <p className="text-sm font-semibold text-slate-700">
+                        {t("jobCards.parts.empty")}
+                      </p>
+                      <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">
+                        {t("jobCards.parts.emptyHint")}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={addPartLine}
+                        className="mt-4 h-9 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                      >
+                        {t("jobCards.parts.addPart")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </section>
 
             <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
@@ -4797,43 +5015,46 @@ function JobCardModal({
               </div>
             </section>
 
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">
-                {t("jobCards.fields.paymentStatus")}
-              </span>
-              <select
-                value={syncedPaymentStatus}
-                onChange={(event) =>
-                  updateJobCardPaymentStatus(event.target.value as PaymentStatus)
-                }
-                className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
-              >
-                <option value="unpaid">{t("jobCards.paymentStatus.unpaid")}</option>
-                <option value="partial">{t("jobCards.paymentStatus.partial")}</option>
-                <option value="paid">{t("jobCards.paymentStatus.paid")}</option>
-              </select>
-            </label>
-
-            <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-3">
-              <FormField
-                inputType="number"
-                label={t("jobCards.fields.paidAmount")}
-                min="0"
-                value={String(paidAmount)}
-                onChange={updateJobCardPaidAmount}
-                placeholder={t("jobCards.form.paidAmountPlaceholder")}
-              />
-              <CustomerField
-                label={t("jobCards.fields.remainingAmount")}
-                value={formatMoney(remainingAmount)}
-              />
-              <div>
+            <section className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="grid gap-3 sm:grid-cols-3 sm:items-end">
+                <label className="block">
+                  <span className="text-sm font-medium text-slate-700">
+                    {t("jobCards.fields.paymentStatus")}
+                  </span>
+                  <select
+                    value={syncedPaymentStatus}
+                    onChange={(event) =>
+                      updateJobCardPaymentStatus(event.target.value as PaymentStatus)
+                    }
+                    className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
+                  >
+                    <option value="unpaid">{t("jobCards.paymentStatus.unpaid")}</option>
+                    <option value="partial">{t("jobCards.paymentStatus.partial")}</option>
+                    <option value="paid">{t("jobCards.paymentStatus.paid")}</option>
+                  </select>
+                </label>
+                <FormField
+                  inputType="number"
+                  label={t("jobCards.fields.paidAmount")}
+                  min="0"
+                  value={String(paidAmount)}
+                  onChange={updateJobCardPaidAmount}
+                  placeholder={t("jobCards.form.paidAmountPlaceholder")}
+                />
+                <div className="rounded-md bg-slate-50 px-3 py-2">
+                  <p className="text-xs font-medium uppercase text-slate-400">
+                    {t("jobCards.fields.remainingAmount")}
+                  </p>
+                  <p className="mt-1 text-base font-bold text-slate-950">
+                    {formatMoney(remainingAmount)}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
                 <p className="text-xs font-medium uppercase text-slate-400">
                   {t("jobCards.fields.paymentStatus")}
                 </p>
-                <div className="mt-1">
-                  <PaymentStatusBadge status={syncedPaymentStatus} t={t} />
-                </div>
+                <PaymentStatusBadge status={syncedPaymentStatus} t={t} />
               </div>
             </section>
 
@@ -4847,7 +5068,7 @@ function JobCardModal({
                   onUpdateForm({ ...jobCardForm, notes: event.target.value })
                 }
                 placeholder={t("jobCards.form.notesPlaceholder")}
-                rows={4}
+                rows={3}
                 className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
               />
             </label>
@@ -5165,7 +5386,7 @@ function InvoiceModal({
             <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">{t("invoices.form.close")}</button>
           </div>
         </div>
-        <div className="max-h-[70vh] flex-1 overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-28">
           <div className="grid gap-4">
             <label className="block">
               <span className="text-sm font-medium text-slate-700">{t("invoices.fields.jobCardNumber")}</span>
@@ -6064,7 +6285,7 @@ function ExpenseModal({
           <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">{t("expenses.form.close")}</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-28">
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label={t("expenses.fields.title")} value={expenseForm.title} onChange={(value) => onUpdateForm({ ...expenseForm, title: value })} placeholder={t("expenses.form.titlePlaceholder")} required />
             <FormField inputType="number" min="0" label={t("expenses.fields.amount")} value={expenseForm.amount} onChange={(value) => onUpdateForm({ ...expenseForm, amount: value })} placeholder={t("expenses.form.amountPlaceholder")} required />
@@ -6094,7 +6315,7 @@ function ExpenseModal({
           </label>
         </div>
 
-        <div className="sticky bottom-0 flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white p-5 sm:flex-row sm:justify-end">
+        <div className="sticky bottom-0 flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} className="h-11 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">{t("expenses.form.cancel")}</button>
           <button type="submit" className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800">{t("expenses.form.save")}</button>
         </div>
@@ -6401,7 +6622,7 @@ function PurchaseModal({
           </div>
         </div>
 
-        <div className="max-h-[70vh] flex-1 overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-28">
           <div className="grid gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField
@@ -6465,8 +6686,8 @@ function PurchaseModal({
 
               <div className="mt-4">
                 {purchaseForm.items.length > 0 ? (
-                  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                    <div className="hidden border-b border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold uppercase text-slate-500 lg:grid lg:grid-cols-[2.2fr_1.1fr_1fr_1fr_1fr_auto] lg:items-center lg:gap-3">
+                  <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                    <div className="hidden min-w-[980px] border-b border-slate-200 bg-slate-100 px-4 py-3 text-xs font-semibold uppercase text-slate-500 lg:grid lg:grid-cols-[2.4fr_1.1fr_1fr_1fr_1fr_auto] lg:items-center lg:gap-4">
                       <span>{t("purchases.items.inventoryItem")}</span>
                       <span className="text-center">{t("purchases.items.currentStock")}</span>
                       <span className="text-center">{t("purchases.items.quantity")}</span>
@@ -6489,9 +6710,9 @@ function PurchaseModal({
                       return (
                         <div
                           key={itemLine.rowId}
-                          className="border-b border-slate-100 p-3 transition last:border-b-0 hover:bg-slate-50/70"
+                          className="min-w-0 border-b border-slate-100 p-4 transition last:border-b-0 hover:bg-slate-50/70 lg:min-w-[980px]"
                         >
-                          <div className="grid gap-3 lg:grid-cols-[2.2fr_1.1fr_1fr_1fr_1fr_auto] lg:items-center">
+                          <div className="grid gap-4 lg:grid-cols-[2.4fr_1.1fr_1fr_1fr_1fr_auto] lg:items-center">
                             <label className="block">
                               <span className="text-sm font-medium text-slate-700 lg:sr-only">
                                 {t("purchases.items.inventoryItem")}
@@ -6967,7 +7188,7 @@ function InventoryModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="grid gap-4 p-5 sm:grid-cols-2">
+          <div className="grid gap-4 p-5 pb-28 sm:grid-cols-2">
             <FormField
               label={t("inventory.fields.itemName")}
               value={inventoryForm.itemName}
@@ -7208,7 +7429,7 @@ function FormField({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         required={required}
-        className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+        className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10"
       />
     </label>
   );
@@ -7242,7 +7463,7 @@ function PhoneField({
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${label.replace(/\s+/g, "-")}-error` : undefined}
         dir="ltr"
-        className={`mt-1 h-11 w-full rounded-md border bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 ${
+        className={`mt-1 h-11 w-full rounded-md border bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 ${
           error ? "border-rose-300" : "border-slate-200"
         }`}
       />
@@ -7269,7 +7490,7 @@ function PercentField({
   return (
     <label className="block">
       <span className="text-sm font-medium text-slate-700">{label}</span>
-      <div className="mt-1 flex h-11 overflow-hidden rounded-md border border-slate-200 bg-white transition focus-within:border-emerald-600">
+      <div className="mt-1 flex h-11 overflow-hidden rounded-md border border-slate-200 bg-white transition focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/10">
         <input
           type="number"
           min="0"
