@@ -4033,7 +4033,7 @@ function CustomerModal({
           </button>
           <button
             type="submit"
-            disabled={hasJobCardFinancialErrors}
+            disabled={showPhoneError}
             className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {t("customers.form.save")}
@@ -5471,7 +5471,8 @@ function JobCardModal({
           </button>
           <button
             type="submit"
-            className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800"
+            disabled={hasJobCardFinancialErrors}
+            className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {t("jobCards.form.save")}
           </button>
@@ -6251,8 +6252,6 @@ function SettingsCard({
   subtitle: string;
   title: string;
 }) {
-  const expenseAmountErrorKey = getFinancialInputErrorKey(expenseForm.amount);
-
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4">
@@ -6765,6 +6764,9 @@ function ExpenseModal({
   onUpdateForm: (value: ExpenseForm) => void;
   t: (key: string) => string;
 }) {
+  const expenseAmountErrorKey = getFinancialInputErrorKey(expenseForm.amount);
+  const hasExpenseFinancialErrors = Boolean(expenseAmountErrorKey);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
       <form onSubmit={onSave} className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
@@ -6808,7 +6810,7 @@ function ExpenseModal({
 
         <div className="sticky bottom-0 flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} className="h-11 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">{t("expenses.form.cancel")}</button>
-          <button type="submit" className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800">{t("expenses.form.save")}</button>
+          <button type="submit" disabled={hasExpenseFinancialErrors} className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300">{t("expenses.form.save")}</button>
         </div>
       </form>
     </div>
@@ -7046,6 +7048,12 @@ function PurchaseModal({
   const totalAmount = purchaseForm.items.reduce(
     (total, itemLine) => total + getLineTotal(itemLine),
     0,
+  );
+  const hasPurchaseFinancialErrors = purchaseForm.items.some((itemLine) =>
+    Boolean(
+      getFinancialInputErrorKey(itemLine.quantity, "toast.quantityInvalid") ||
+        getFinancialInputErrorKey(itemLine.costPrice),
+    ),
   );
 
   const createRowId = () =>
@@ -7406,7 +7414,8 @@ function PurchaseModal({
           </button>
           <button
             type="submit"
-            className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800"
+            disabled={hasPurchaseFinancialErrors}
+            className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {t("purchases.form.save")}
           </button>
