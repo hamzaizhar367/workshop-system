@@ -7,6 +7,7 @@ import {
   useSyncExternalStore,
   type FormEvent,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { useLanguage } from "./language-provider";
 
@@ -1051,53 +1052,204 @@ const isSectionKey = (value: string): value is SectionKey =>
 const getSafeString = (value: unknown) =>
   typeof value === "string" ? value : "";
 
-const normalizeSaudiPhone = (value: unknown) => {
-  const digits = getSafeString(value).replace(/\D/g, "");
+const arabicIndicDigits: Record<string, string> = {
+  "٠": "0",
+  "١": "1",
+  "٢": "2",
+  "٣": "3",
+  "٤": "4",
+  "٥": "5",
+  "٦": "6",
+  "٧": "7",
+  "٨": "8",
+  "٩": "9",
+  "۰": "0",
+  "۱": "1",
+  "۲": "2",
+  "۳": "3",
+  "۴": "4",
+  "۵": "5",
+  "۶": "6",
+  "۷": "7",
+  "۸": "8",
+  "۹": "9",
+};
 
-  if (!digits) {
-    return "";
+const normalizeNumberInput = (value: unknown) => {
+  const rawValue =
+    typeof value === "number" && Number.isFinite(value)
+      ? String(value)
+      : getSafeString(value);
+
+  return rawValue
+    .trim()
+    .replace(/[٠-٩۰-۹]/g, (digit) => arabicIndicDigits[digit] ?? digit)
+    .replace(/٫/g, ".")
+    .replace(/[٬,]/g, "")
+    .replace(/\s+/g, "");
+};
+
+const parseSafeNumber = (value: unknown) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
   }
 
-  const withoutInternationalPrefix = digits.startsWith("00966")
-    ? digits.slice(2)
-    : digits;
-  const localDigits = withoutInternationalPrefix.startsWith("966")
-    ? withoutInternationalPrefix.slice(3)
-    : withoutInternationalPrefix.startsWith("0")
-      ? withoutInternationalPrefix.slice(1)
-      : withoutInternationalPrefix;
-  const mobileDigits = localDigits.slice(0, 9);
+  const normalizedValue = normalizeNumberInput(value);
 
-  if (!mobileDigits) {
+  if (!normalizedValue || !/^-?(?:\d+|\d*\.\d+)$/.test(normalizedValue)) {
+    return null;
+  }
+
+  const parsedValue = Number(normalizedValue);
+  return Number.isFinite(parsedValue) ? parsedValue : null;
+};
+
+const validateNonNegativeAmount = (value: unknown, label: string) => {
+  const parsedValue = parseSafeNumber(value);
+
+  if (parsedValue === null || parsedValue < 0) {
+    return {
+      errorKey: "toast.amountInvalid",
+      label,
+      value: null,
+    };
+  }
+
+  return {
+    errorKey: null,
+    label,
+    value: parsedValue,
+  };
+};
+
+const validatePaidAmount = (paid: unknown, total: number) => {
+  const paidValidation = validateNonNegativeAmount(paid, "paidAmount");
+
+  if (paidValidation.errorKey || paidValidation.value === null) {
+    return paidValidation;
+  }
+
+  if (paidValidation.value > total) {
+    return {
+      errorKey: "toast.paidAmountTooHigh",
+      label: paidValidation.label,
+      value: null,
+    };
+  }
+
+  return paidValidation;
+};
+
+const validateOptionalNonNegativeAmount = (value: unknown, label: string) =>
+  normalizeNumberInput(value) === ""
+    ? { errorKey: null, value: 0 }
+    : validateNonNegativeAmount(value, label);
+
+const getFinancialInputErrorKey = (
+  value: unknown,
+  errorKey = "toast.amountInvalid",
+) => {
+  if (normalizeNumberInput(value) === "") {
+    return null;
+  }
+
+  const parsedValue = parseSafeNumber(value);
+  return parsedValue === null || parsedValue < 0 ? errorKey : null;
+};
+
+const getPaidAmountInputErrorKey = (paid: unknown, total: number) => {
+  if (normalizeNumberInput(paid) === "") {
+    return null;
+  }
+
+  const paidValidation = validatePaidAmount(paid, total);
+  return paidValidation.errorKey;
+};
+
+const cleanSaudiPhoneInput = (value: unknown) =>
+  getSafeString(value).trim().replace(/[\s\-()]/g, "");
+
+const getCleanPhoneDigits = (value: unknown) => {
+  const compactValue = cleanSaudiPhoneInput(value);
+
+  if (!compactValue) {
+    return null;
+  }
+
+  if (!/^\+?\d+$/.test(compactValue)) {
+    return null;
+  }
+
+  return compactValue.replace(/^\+/, "");
+};
+
+const getSaudiLocalDigits = (value: unknown) => {
+  let digits = getCleanPhoneDigits(value);
+
+  if (digits === null) {
+    return null;
+  }
+
+  if (digits.startsWith("966")) {
+    digits = digits.slice(3);
+  } else if (digits.startsWith("0")) {
+    digits = digits.slice(1);
+  }
+
+  return digits;
+};
+
+const normalizeSaudiPhone = (value: unknown) => {
+  const rawValue = getSafeString(value).trim();
+  const compactValue = cleanSaudiPhoneInput(value);
+
+  if (/^\+\d+$/.test(compactValue)) {
+    return compactValue;
+  }
+
+  const localDigits = getSaudiLocalDigits(value);
+
+  if (localDigits === null) {
+    return rawValue;
+  }
+
+  if (!localDigits) {
     return "+966";
   }
 
-  return `+966${mobileDigits}`;
+  return `+966${localDigits}`;
 };
 
 const formatSaudiPhone = (value: unknown) => {
   const normalizedPhone = normalizeSaudiPhone(value);
-  const mobileDigits = normalizedPhone.replace(/\D/g, "").replace(/^966/, "");
+  const isNormalizedSaudiPhone = /^\+966\d+$/.test(normalizedPhone);
 
-  if (!mobileDigits) {
+  if (!isNormalizedSaudiPhone) {
     return normalizedPhone;
   }
 
-  const firstGroup = mobileDigits.slice(0, 2);
-  const secondGroup = mobileDigits.slice(2, 5);
-  const thirdGroup = mobileDigits.slice(5, 9);
+  const localDigits = normalizedPhone.replace(/^\+966/, "");
+
+  if (!localDigits) {
+    return normalizedPhone;
+  }
+
+  const firstGroup = localDigits.slice(0, 2);
+  const secondGroup = localDigits.slice(2, 5);
+  const thirdGroup = localDigits.slice(5, 9);
 
   return ["+966", firstGroup, secondGroup, thirdGroup].filter(Boolean).join(" ");
 };
 
 const isValidSaudiPhone = (value: string) =>
-  /^(\+9665\d{8})$/.test(normalizeSaudiPhone(value));
+  /^(05\d{8}|01\d{8})$/.test(cleanSaudiPhoneInput(value)) ||
+  /^\+\d{7,15}$/.test(cleanSaudiPhoneInput(value));
 
 const getSafeNumber = (value: unknown, fallback = 0) =>
   typeof value === "number" && Number.isFinite(value)
     ? value
-    : typeof value === "string" && Number.isFinite(Number(value))
-      ? Number(value)
+    : typeof value === "string" && parseSafeNumber(value) !== null
+      ? (parseSafeNumber(value) ?? fallback)
       : fallback;
 
 const isStoredRecord = <T,>(value: T | null | undefined): value is T =>
@@ -1135,7 +1287,7 @@ const getSyncedPersistedPayment = (
   };
 };
 
-const getStoredDemoData = () => {
+const loadAppData = () => {
   const fallback = getDefaultDemoData();
   const storedData = safeLocalStorageGet<Partial<DemoPersistedData>>(
     demoDataStorageKey,
@@ -1243,6 +1395,10 @@ const getStoredDemoData = () => {
   };
 };
 
+const saveAppData = (data: DemoPersistedData) => {
+  safeLocalStorageSet(demoDataStorageKey, data);
+};
+
 export default function Home() {
   const { dir, isLanguageReady, locale, setLocale, t } = useLanguage();
   const isAppHydrated = useSyncExternalStore(
@@ -1250,7 +1406,8 @@ export default function Home() {
     getHydratedSnapshot,
     getServerHydrationSnapshot,
   );
-  const [initialDemoData] = useState<DemoPersistedData>(getStoredDemoData);
+  const [initialDemoData] = useState<DemoPersistedData>(loadAppData);
+  const [appData, setAppData] = useState<DemoPersistedData>(initialDemoData);
   const [activeSection, setActiveSection] = useState<SectionKey>(() => {
     const storedSection = safeSessionStorageGet<string>(
       activeSectionSessionStorageKey,
@@ -1259,14 +1416,68 @@ export default function Home() {
 
     return isSectionKey(storedSection) ? storedSection : "dashboard";
   });
-  const [customers, setCustomers] = useState<Customer[]>(initialDemoData.customers);
+  const updateAppDataSlice = <Key extends keyof DemoPersistedData>(
+    key: Key,
+    value: SetStateAction<DemoPersistedData[Key]>,
+  ) => {
+    setAppData((currentData) => {
+      const nextValue =
+        typeof value === "function"
+          ? (value as (currentValue: DemoPersistedData[Key]) => DemoPersistedData[Key])(
+              currentData[key],
+            )
+          : value;
+
+      return Object.is(currentData[key], nextValue)
+        ? currentData
+        : {
+            ...currentData,
+            [key]: nextValue,
+          };
+    });
+  };
+
+  const customers = appData.customers;
+  const vehicles = appData.vehicles;
+  const jobCards = appData.jobCards;
+  const inventoryItems = appData.inventoryItems;
+  const purchases = appData.purchases;
+  const expenses = appData.expenses;
+  const invoices = appData.invoices;
+  const settings = appData.settings;
+
+  const updateCustomers = (value: SetStateAction<Customer[]>) =>
+    updateAppDataSlice("customers", value);
+  const updateVehicles = (value: SetStateAction<Vehicle[]>) =>
+    updateAppDataSlice("vehicles", value);
+  const updateJobCards = (value: SetStateAction<JobCard[]>) =>
+    updateAppDataSlice("jobCards", value);
+  const updateInventory = (value: SetStateAction<InventoryItem[]>) =>
+    updateAppDataSlice("inventoryItems", value);
+  const updatePurchases = (value: SetStateAction<Purchase[]>) =>
+    updateAppDataSlice("purchases", value);
+  const updateExpenses = (value: SetStateAction<Expense[]>) =>
+    updateAppDataSlice("expenses", value);
+  const updateInvoices = (value: SetStateAction<Invoice[]>) =>
+    updateAppDataSlice("invoices", value);
+  const updateSettings = (value: SetStateAction<WorkshopSettings>) =>
+    updateAppDataSlice("settings", value);
+
+  const setCustomers = updateCustomers;
+  const setVehicles = updateVehicles;
+  const setJobCards = updateJobCards;
+  const setInventoryItems = updateInventory;
+  const setPurchases = updatePurchases;
+  const setExpenses = updateExpenses;
+  const setInvoices = updateInvoices;
+  const setSettings = updateSettings;
+
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [customerForm, setCustomerForm] = useState<CustomerForm>(emptyCustomerForm);
   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
   const [customerTab, setCustomerTab] = useState<RecordTab>("active");
   const [customerPhoneError, setCustomerPhoneError] = useState(false);
-  const [vehicles, setVehicles] = useState<Vehicle[]>(initialDemoData.vehicles);
   const [vehicleSearch, setVehicleSearch] = useState("");
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
   const [vehicleForm, setVehicleForm] = useState<VehicleForm>(emptyVehicleForm);
@@ -1274,14 +1485,11 @@ export default function Home() {
   const [vehicleModalSource, setVehicleModalSource] = useState<"vehicles" | "jobCard" | null>(null);
   const [historyVehicleId, setHistoryVehicleId] = useState<number | null>(null);
   const [vehicleTab, setVehicleTab] = useState<RecordTab>("active");
-  const [jobCards, setJobCards] = useState<JobCard[]>(initialDemoData.jobCards);
   const [isJobCardModalOpen, setIsJobCardModalOpen] = useState(false);
   const [jobCardForm, setJobCardForm] = useState<JobCardForm>(emptyJobCardForm);
   const [editingJobCardId, setEditingJobCardId] = useState<number | null>(null);
   const [jobCardTab, setJobCardTab] = useState<RecordTab>("active");
   const [jobCardSearch, setJobCardSearch] = useState("");
-  const [inventoryItems, setInventoryItems] =
-    useState<InventoryItem[]>(initialDemoData.inventoryItems);
   const [inventorySearch, setInventorySearch] = useState("");
   const [inventoryTab, setInventoryTab] = useState<RecordTab>("active");
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
@@ -1289,18 +1497,15 @@ export default function Home() {
     useState<InventoryForm>(emptyInventoryForm);
   const [editingInventoryItemId, setEditingInventoryItemId] =
     useState<number | null>(null);
-  const [purchases, setPurchases] = useState<Purchase[]>(initialDemoData.purchases);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [purchaseForm, setPurchaseForm] = useState<PurchaseForm>(emptyPurchaseForm);
   const [expandedPurchaseId, setExpandedPurchaseId] = useState<number | null>(null);
   const [duplicatePurchaseRowId, setDuplicatePurchaseRowId] = useState<string | null>(
     null,
   );
-  const [expenses, setExpenses] = useState<Expense[]>(initialDemoData.expenses);
   const [expenseTab, setExpenseTab] = useState<RecordTab>("active");
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState<ExpenseForm>(emptyExpenseForm);
-  const [invoices, setInvoices] = useState<Invoice[]>(initialDemoData.invoices);
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [invoiceTab, setInvoiceTab] = useState<RecordTab>("active");
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
@@ -1308,7 +1513,6 @@ export default function Home() {
   const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null);
   const [printInvoiceId, setPrintInvoiceId] = useState<number | null>(null);
   const [reportRange, setReportRange] = useState<ReportRange>("month");
-  const [settings, setSettings] = useState<WorkshopSettings>(initialDemoData.settings);
   const [settingsDraft, setSettingsDraft] = useState<WorkshopSettings>(
     initialDemoData.settings,
   );
@@ -1333,27 +1537,8 @@ export default function Home() {
       return;
     }
 
-    safeLocalStorageSet(demoDataStorageKey, {
-      customers,
-      vehicles,
-      jobCards,
-      inventoryItems,
-      purchases,
-      expenses,
-      invoices,
-      settings,
-    } satisfies DemoPersistedData);
-  }, [
-    customers,
-    expenses,
-    inventoryItems,
-    invoices,
-    jobCards,
-    purchases,
-    settings,
-    vehicles,
-    isAppHydrated,
-  ]);
+    saveAppData(appData);
+  }, [appData, isAppHydrated]);
 
   useEffect(() => {
     document.body.classList.toggle("invoice-printing", printInvoiceId !== null);
@@ -1722,13 +1907,14 @@ export default function Home() {
   };
 
   const parsePositiveNumber = (value: string) => {
-    const parsedValue = Number(value);
-    return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+    const parsedValue = parseSafeNumber(value);
+    return parsedValue !== null && parsedValue > 0 ? parsedValue : 0;
   };
 
   const parseWholeNumber = (value: string) => {
-    const parsedValue = Math.floor(Number(value));
-    return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+    const parsedValue = parseSafeNumber(value);
+    const wholeValue = parsedValue === null ? null : Math.floor(parsedValue);
+    return wholeValue !== null && wholeValue > 0 ? wholeValue : 0;
   };
 
   const getTodayInputValue = () => new Date().toISOString().slice(0, 10);
@@ -1787,33 +1973,6 @@ export default function Home() {
     }
 
     return paidAmount >= grandTotal ? ("paid" as const) : ("partial" as const);
-  };
-
-  const getSyncedPaymentValues = (
-    paymentStatus: PaymentStatus,
-    paidAmount: number,
-    totalAmount: number,
-  ) => {
-    if (paymentStatus === "paid") {
-      return {
-        paidAmount: totalAmount,
-        paymentStatus: "paid" as const,
-      };
-    }
-
-    if (paymentStatus === "unpaid") {
-      return {
-        paidAmount: 0,
-        paymentStatus: "unpaid" as const,
-      };
-    }
-
-    const safePaidAmount = Math.min(Math.max(0, paidAmount), totalAmount);
-
-    return {
-      paidAmount: safePaidAmount,
-      paymentStatus: getPaymentStatusFromAmounts(safePaidAmount, totalAmount),
-    };
   };
 
   const getInvoiceCalculations = (
@@ -1893,6 +2052,34 @@ export default function Home() {
         },
       ];
     }, []);
+  };
+
+  const getJobPartsValidationErrorKey = () => {
+    for (const partLine of jobCardForm.partsUsed) {
+      if (!partLine.inventoryItemId) {
+        continue;
+      }
+
+      const quantityValidation = validateNonNegativeAmount(
+        partLine.quantity,
+        "quantity",
+      );
+
+      if (quantityValidation.errorKey || quantityValidation.value === null) {
+        return "toast.quantityInvalid";
+      }
+
+      const unitPriceValidation = validateNonNegativeAmount(
+        partLine.unitSellingPrice,
+        "unitSellingPrice",
+      );
+
+      if (unitPriceValidation.errorKey || unitPriceValidation.value === null) {
+        return "toast.amountInvalid";
+      }
+    }
+
+    return null;
   };
 
   const getStockDeductionQuantities = (partsUsed: JobPart[]) => {
@@ -2278,15 +2465,36 @@ export default function Home() {
     const existingJobCard = editingJobCardId
       ? jobCards.find((jobCard) => jobCard.id === editingJobCardId)
       : undefined;
+    const laborValidation = validateNonNegativeAmount(
+      jobCardForm.laborCost,
+      "laborCost",
+    );
+
+    if (laborValidation.errorKey || laborValidation.value === null) {
+      showToast("toast.laborCostInvalid");
+      return;
+    }
+
+    const partsValidationErrorKey = getJobPartsValidationErrorKey();
+
+    if (partsValidationErrorKey) {
+      showToast(partsValidationErrorKey);
+      return;
+    }
+
     const partsUsed = getJobPartsFromForm();
     const partsCost = partsUsed.reduce((total, part) => total + part.lineTotal, 0);
-    const laborCost = parsePositiveNumber(jobCardForm.laborCost);
+    const laborCost = laborValidation.value;
     const totalAmount = laborCost + partsCost;
-    const syncedPayment = getSyncedPaymentValues(
-      jobCardForm.paymentStatus,
-      parsePositiveNumber(jobCardForm.paidAmount),
-      totalAmount,
-    );
+    const paidValidation = validatePaidAmount(jobCardForm.paidAmount, totalAmount);
+
+    if (paidValidation.errorKey || paidValidation.value === null) {
+      showToast(paidValidation.errorKey);
+      return;
+    }
+
+    const paidAmount = paidValidation.value;
+    const paymentStatus = getPaymentStatusFromAmounts(paidAmount, totalAmount);
     const isSavingCompletedJob = jobCardForm.status === "completed";
     const previousDeductedParts =
       existingJobCard?.stockDeducted === true ? existingJobCard.deductedParts : [];
@@ -2322,8 +2530,8 @@ export default function Home() {
       laborCost,
       partsCost,
       partsUsed,
-      paidAmount: syncedPayment.paidAmount,
-      paymentStatus: syncedPayment.paymentStatus,
+      paidAmount,
+      paymentStatus,
       notes: jobCardForm.notes.trim(),
       stockDeducted: nextDeductedParts.length > 0,
       deductedParts: nextDeductedParts,
@@ -2436,8 +2644,55 @@ export default function Home() {
     notes: inventoryForm.notes.trim(),
   });
 
+  const getInventoryValidationErrorKey = () => {
+    const stockValidation = validateNonNegativeAmount(
+      inventoryForm.stockQuantity,
+      "stockQuantity",
+    );
+    const minimumStockValidation = validateNonNegativeAmount(
+      inventoryForm.minimumStock,
+      "minimumStock",
+    );
+
+    if (
+      stockValidation.errorKey ||
+      stockValidation.value === null ||
+      minimumStockValidation.errorKey ||
+      minimumStockValidation.value === null
+    ) {
+      return "toast.quantityInvalid";
+    }
+
+    const costValidation = validateNonNegativeAmount(
+      inventoryForm.costPrice,
+      "costPrice",
+    );
+    const sellingValidation = validateNonNegativeAmount(
+      inventoryForm.sellingPrice,
+      "sellingPrice",
+    );
+
+    if (
+      costValidation.errorKey ||
+      costValidation.value === null ||
+      sellingValidation.errorKey ||
+      sellingValidation.value === null
+    ) {
+      return "toast.amountInvalid";
+    }
+
+    return null;
+  };
+
   const saveInventoryItem = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    const validationErrorKey = getInventoryValidationErrorKey();
+
+    if (validationErrorKey) {
+      showToast(validationErrorKey);
+      return;
+    }
 
     const inventoryValues = getInventoryFormValues();
 
@@ -2516,6 +2771,34 @@ export default function Home() {
     }, []);
   };
 
+  const getPurchaseItemsValidationErrorKey = () => {
+    for (const itemLine of purchaseForm.items) {
+      if (!itemLine.inventoryItemId) {
+        continue;
+      }
+
+      const quantityValidation = validateNonNegativeAmount(
+        itemLine.quantity,
+        "purchaseQuantity",
+      );
+
+      if (quantityValidation.errorKey || quantityValidation.value === null) {
+        return "toast.quantityInvalid";
+      }
+
+      const costValidation = validateNonNegativeAmount(
+        itemLine.costPrice,
+        "purchaseCost",
+      );
+
+      if (costValidation.errorKey || costValidation.value === null) {
+        return "toast.amountInvalid";
+      }
+    }
+
+    return null;
+  };
+
   const increaseInventoryStockFromPurchase = (purchaseItems: PurchaseItem[]) => {
     const purchasedQuantities = purchaseItems.reduce<Record<number, number>>(
       (quantities, item) => ({
@@ -2537,6 +2820,13 @@ export default function Home() {
 
   const savePurchase = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    const validationErrorKey = getPurchaseItemsValidationErrorKey();
+
+    if (validationErrorKey) {
+      showToast(validationErrorKey);
+      return;
+    }
 
     const purchaseItems = getPurchaseItemsFromForm();
     const purchasedItemIds = purchaseItems.map((item) => item.inventoryItemId);
@@ -2586,9 +2876,20 @@ export default function Home() {
   const saveExpense = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const amount = parsePositiveNumber(expenseForm.amount);
+    const amountValidation = validateNonNegativeAmount(
+      expenseForm.amount,
+      "expenseAmount",
+    );
+
+    if (amountValidation.errorKey || amountValidation.value === null) {
+      showToast("toast.amountInvalid");
+      return;
+    }
+
+    const amount = amountValidation.value;
 
     if (amount <= 0) {
+      showToast("toast.amountInvalid");
       return;
     }
 
@@ -2661,6 +2962,40 @@ export default function Home() {
     setIsInvoiceModalOpen(false);
     setEditingInvoiceId(null);
     setInvoiceForm(emptyInvoiceForm);
+  };
+
+  const getInvoiceValidationErrorKey = (jobCard: JobCard) => {
+    const discountValidation = validateOptionalNonNegativeAmount(
+      invoiceForm.discount,
+      "discount",
+    );
+    const taxValidation = validateOptionalNonNegativeAmount(
+      invoiceForm.taxPercentage,
+      "taxPercentage",
+    );
+
+    if (
+      discountValidation.errorKey ||
+      discountValidation.value === null ||
+      taxValidation.errorKey ||
+      taxValidation.value === null
+    ) {
+      return "toast.amountInvalid";
+    }
+
+    const calculations = getInvoiceCalculations(
+      jobCard.laborCost,
+      jobCard.partsCost,
+      discountValidation.value,
+      taxValidation.value,
+      0,
+    );
+    const paidValidation = validatePaidAmount(
+      invoiceForm.paidAmount,
+      calculations.grandTotal,
+    );
+
+    return paidValidation.errorKey;
   };
 
   const buildInvoiceValues = (jobCard: JobCard, existingInvoice?: Invoice) => {
@@ -2737,6 +3072,13 @@ export default function Home() {
       return;
     }
 
+    const validationErrorKey = getInvoiceValidationErrorKey(selectedJobCard);
+
+    if (validationErrorKey) {
+      showToast(validationErrorKey);
+      return;
+    }
+
     if (editingInvoiceId) {
       const existingInvoice = invoices.find((invoice) => invoice.id === editingInvoiceId);
       const invoiceValues = buildInvoiceValues(selectedJobCard, existingInvoice);
@@ -2773,9 +3115,18 @@ export default function Home() {
   const saveSettings = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const normalizedPhone = normalizeSaudiPhone(settingsDraft.phoneNumber);
+    const defaultVatValidation = validateOptionalNonNegativeAmount(
+      settingsDraft.defaultVatPercentage,
+      "defaultVatPercentage",
+    );
 
     if (!isValidSaudiPhone(normalizedPhone)) {
       setSettingsPhoneError(true);
+      return;
+    }
+
+    if (defaultVatValidation.errorKey || defaultVatValidation.value === null) {
+      showToast("toast.amountInvalid");
       return;
     }
 
@@ -2792,6 +3143,7 @@ export default function Home() {
       arabicSubtitle:
         settingsDraft.arabicSubtitle.trim() || defaultWorkshopSettings.arabicSubtitle,
       phoneNumber: normalizedPhone,
+      defaultVatPercentage: String(defaultVatValidation.value),
     };
 
     setSettingsPhoneError(false);
@@ -2829,14 +3181,7 @@ export default function Home() {
     const defaultDemoData = getDefaultDemoData();
 
     safeLocalStorageRemove(demoDataStorageKey);
-    setCustomers(defaultDemoData.customers);
-    setVehicles(defaultDemoData.vehicles);
-    setJobCards(defaultDemoData.jobCards);
-    setInventoryItems(defaultDemoData.inventoryItems);
-    setPurchases(defaultDemoData.purchases);
-    setExpenses(defaultDemoData.expenses);
-    setInvoices(defaultDemoData.invoices);
-    setSettings(defaultDemoData.settings);
+    setAppData(defaultDemoData);
     setSettingsDraft(defaultDemoData.settings);
     setLocale(defaultDemoData.settings.defaultLanguage);
     setActiveSection("settings");
@@ -3586,9 +3931,10 @@ function CustomerModal({
   onUpdateForm: (value: CustomerForm) => void;
   t: (key: string) => string;
 }) {
+  const hasPhoneValue = Boolean(cleanSaudiPhoneInput(customerForm.phone));
+  const isCurrentPhoneValid = isValidSaudiPhone(customerForm.phone);
   const showPhoneError =
-    customerPhoneError ||
-    (Boolean(customerForm.phone) && !isValidSaudiPhone(customerForm.phone));
+    (customerPhoneError || hasPhoneValue) && !isCurrentPhoneValid;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
@@ -3687,7 +4033,8 @@ function CustomerModal({
           </button>
           <button
             type="submit"
-            className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800"
+            disabled={hasJobCardFinancialErrors}
+            className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {t("customers.form.save")}
           </button>
@@ -4490,8 +4837,8 @@ function JobCardModal({
     (vehicle) => vehicle.id === Number(jobCardForm.vehicleId),
   );
   const getFormCost = (value: string) => {
-    const parsedValue = Number(value);
-    return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+    const parsedValue = parseSafeNumber(value);
+    return parsedValue !== null && parsedValue > 0 ? parsedValue : 0;
   };
   const activeInventoryItems = inventoryItems.filter((item) => !item.archived);
   const getPartLineTotal = (partLine: JobPartFormLine) =>
@@ -4502,15 +4849,27 @@ function JobCardModal({
   );
   const totalAmount = getFormCost(jobCardForm.laborCost) + partsTotal;
   const rawPaidAmount = getFormCost(jobCardForm.paidAmount);
-  const paidAmount =
-    jobCardForm.paymentStatus === "paid"
-      ? totalAmount
-      : jobCardForm.paymentStatus === "unpaid"
-        ? 0
-        : rawPaidAmount;
+  const paidAmount = rawPaidAmount;
   const syncedPaymentStatus =
     paidAmount <= 0 ? "unpaid" : paidAmount >= totalAmount ? "paid" : "partial";
   const remainingAmount = Math.max(0, totalAmount - paidAmount);
+  const laborCostErrorKey = getFinancialInputErrorKey(
+    jobCardForm.laborCost,
+    "toast.laborCostInvalid",
+  );
+  const paidAmountErrorKey = getPaidAmountInputErrorKey(
+    jobCardForm.paidAmount,
+    totalAmount,
+  );
+  const hasPartFinancialErrors = jobCardForm.partsUsed.some((partLine) =>
+    Boolean(
+      getFinancialInputErrorKey(partLine.quantity, "toast.quantityInvalid") ||
+        getFinancialInputErrorKey(partLine.unitSellingPrice),
+    ),
+  );
+  const hasJobCardFinancialErrors = Boolean(
+    laborCostErrorKey || paidAmountErrorKey || hasPartFinancialErrors,
+  );
   const selectedInventoryItemIds = jobCardForm.partsUsed
     .map((partLine) => partLine.inventoryItemId)
     .filter(Boolean);
@@ -4554,7 +4913,9 @@ function JobCardModal({
     });
   };
   const updateJobCardPaidAmount = (value: string) => {
-    const nextPaidAmount = Number(value) > 0 ? Number(value) : 0;
+    const parsedPaidAmount = parseSafeNumber(value);
+    const nextPaidAmount =
+      parsedPaidAmount !== null && parsedPaidAmount > 0 ? parsedPaidAmount : 0;
 
     onUpdateForm({
       ...jobCardForm,
@@ -4732,6 +5093,7 @@ function JobCardModal({
                 value={jobCardForm.laborCost}
                 onChange={(value) => onUpdateForm({ ...jobCardForm, laborCost: value })}
                 placeholder={t("jobCards.form.laborCostPlaceholder")}
+                error={laborCostErrorKey ? t(laborCostErrorKey) : undefined}
                 required
               />
 
@@ -4793,6 +5155,13 @@ function JobCardModal({
                           (item) => item.id === Number(partLine.inventoryItemId),
                         );
                         const quantity = getFormCost(partLine.quantity);
+                        const quantityErrorKey = getFinancialInputErrorKey(
+                          partLine.quantity,
+                          "toast.quantityInvalid",
+                        );
+                        const unitPriceErrorKey = getFinancialInputErrorKey(
+                          partLine.unitSellingPrice,
+                        );
                         const showStockWarning =
                           selectedItem?.itemType === "stock" &&
                           quantity > selectedItem.stockQuantity;
@@ -4916,8 +5285,16 @@ function JobCardModal({
                                   })
                                 }
                                 placeholder={t("jobCards.parts.quantityPlaceholder")}
-                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+                                aria-invalid={Boolean(quantityErrorKey)}
+                                className={`mt-1 h-10 w-full rounded-md border bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 ${
+                                  quantityErrorKey ? "border-rose-300" : "border-slate-200"
+                                }`}
                               />
+                              {quantityErrorKey ? (
+                                <p className="mt-1 text-xs font-medium text-rose-600">
+                                  {t(quantityErrorKey)}
+                                </p>
+                              ) : null}
                             </label>
 
                             <label className="block">
@@ -4934,8 +5311,16 @@ function JobCardModal({
                                   })
                                 }
                                 placeholder={t("jobCards.parts.pricePlaceholder")}
-                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+                                aria-invalid={Boolean(unitPriceErrorKey)}
+                                className={`mt-1 h-10 w-full rounded-md border bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 ${
+                                  unitPriceErrorKey ? "border-rose-300" : "border-slate-200"
+                                }`}
                               />
+                              {unitPriceErrorKey ? (
+                                <p className="mt-1 text-xs font-medium text-rose-600">
+                                  {t(unitPriceErrorKey)}
+                                </p>
+                              ) : null}
                             </label>
 
                             <div className="flex items-end justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 md:col-span-2 lg:col-span-1">
@@ -5037,9 +5422,10 @@ function JobCardModal({
                   inputType="number"
                   label={t("jobCards.fields.paidAmount")}
                   min="0"
-                  value={String(paidAmount)}
+                  value={jobCardForm.paidAmount}
                   onChange={updateJobCardPaidAmount}
                   placeholder={t("jobCards.form.paidAmountPlaceholder")}
+                  error={paidAmountErrorKey ? t(paidAmountErrorKey) : undefined}
                 />
                 <div className="rounded-md bg-slate-50 px-3 py-2">
                   <p className="text-xs font-medium uppercase text-slate-400">
@@ -5271,14 +5657,30 @@ function InvoiceModal({
   t: (key: string) => string;
 }) {
   const selectedJobCard = availableJobCards.find((jobCard) => jobCard.id === Number(invoiceForm.jobCardId));
-  const discount = Number(invoiceForm.discount) > 0 ? Number(invoiceForm.discount) : 0;
-  const taxPercentage = Number(invoiceForm.taxPercentage) > 0 ? Number(invoiceForm.taxPercentage) : 0;
-  const paidAmount = Number(invoiceForm.paidAmount) > 0 ? Number(invoiceForm.paidAmount) : 0;
+  const discountValue = parseSafeNumber(invoiceForm.discount);
+  const taxPercentageValue = parseSafeNumber(invoiceForm.taxPercentage);
+  const paidAmountValue = parseSafeNumber(invoiceForm.paidAmount);
+  const discount = discountValue !== null && discountValue > 0 ? discountValue : 0;
+  const taxPercentage =
+    taxPercentageValue !== null && taxPercentageValue > 0 ? taxPercentageValue : 0;
+  const paidAmount =
+    paidAmountValue !== null && paidAmountValue > 0 ? paidAmountValue : 0;
   const subtotal = selectedJobCard ? selectedJobCard.laborCost + selectedJobCard.partsCost : 0;
   const taxAmount = subtotal * (taxPercentage / 100);
   const grandTotal = Math.max(0, subtotal + taxAmount - discount);
   const remainingBalance = Math.max(0, grandTotal - paidAmount);
   const paymentStatus = paidAmount <= 0 ? "unpaid" : paidAmount >= grandTotal ? "paid" : "partial";
+  const discountErrorKey = getFinancialInputErrorKey(invoiceForm.discount);
+  const taxPercentageErrorKey = getFinancialInputErrorKey(
+    invoiceForm.taxPercentage,
+  );
+  const invoicePaidAmountErrorKey = getPaidAmountInputErrorKey(
+    invoiceForm.paidAmount,
+    grandTotal,
+  );
+  const hasInvoiceFinancialErrors = Boolean(
+    discountErrorKey || taxPercentageErrorKey || invoicePaidAmountErrorKey,
+  );
   const getPaidAmountForStatus = (
     status: PaymentStatus,
     currentPaidAmount: number,
@@ -5292,18 +5694,22 @@ function InvoiceModal({
       return 0;
     }
 
-    return Math.min(currentPaidAmount, nextGrandTotal);
+    return currentPaidAmount;
   };
   const updateInvoiceTotalInput = (
     nextValues: Partial<Pick<InvoiceForm, "discount" | "taxPercentage">>,
   ) => {
+    const nextDiscountValue = parseSafeNumber(
+      nextValues.discount ?? invoiceForm.discount,
+    );
+    const nextTaxPercentageValue = parseSafeNumber(
+      nextValues.taxPercentage ?? invoiceForm.taxPercentage,
+    );
     const nextDiscount =
-      Number(nextValues.discount ?? invoiceForm.discount) > 0
-        ? Number(nextValues.discount ?? invoiceForm.discount)
-        : 0;
+      nextDiscountValue !== null && nextDiscountValue > 0 ? nextDiscountValue : 0;
     const nextTaxPercentage =
-      Number(nextValues.taxPercentage ?? invoiceForm.taxPercentage) > 0
-        ? Number(nextValues.taxPercentage ?? invoiceForm.taxPercentage)
+      nextTaxPercentageValue !== null && nextTaxPercentageValue > 0
+        ? nextTaxPercentageValue
         : 0;
     const nextTaxAmount = subtotal * (nextTaxPercentage / 100);
     const nextGrandTotal = Math.max(0, subtotal + nextTaxAmount - nextDiscount);
@@ -5321,7 +5727,9 @@ function InvoiceModal({
     });
   };
   const updateInvoicePaidAmount = (value: string) => {
-    const nextPaidAmount = Number(value) > 0 ? Number(value) : 0;
+    const parsedPaidAmount = parseSafeNumber(value);
+    const nextPaidAmount =
+      parsedPaidAmount !== null && parsedPaidAmount > 0 ? parsedPaidAmount : 0;
 
     onUpdateForm({
       ...invoiceForm,
@@ -5418,9 +5826,9 @@ function InvoiceModal({
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField inputType="date" label={t("invoices.fields.invoiceDate")} value={invoiceForm.invoiceDate} onChange={(value) => onUpdateForm({ ...invoiceForm, invoiceDate: value })} placeholder={t("invoices.form.invoiceDatePlaceholder")} required />
               <FormField inputType="date" label={t("invoices.fields.dueDate")} value={invoiceForm.dueDate} onChange={(value) => onUpdateForm({ ...invoiceForm, dueDate: value })} placeholder={t("invoices.form.dueDatePlaceholder")} required />
-              <FormField inputType="number" label={t("invoices.fields.discount")} min="0" value={invoiceForm.discount} onChange={(value) => updateInvoiceTotalInput({ discount: value })} placeholder={t("invoices.form.discountPlaceholder")} />
-              <PercentField label={t("invoices.fields.taxPercentage")} value={invoiceForm.taxPercentage} onChange={(value) => updateInvoiceTotalInput({ taxPercentage: value })} placeholder={t("invoices.form.taxPercentagePlaceholder")} />
-              <FormField inputType="number" label={t("invoices.fields.paidAmount")} min="0" value={invoiceForm.paidAmount} onChange={updateInvoicePaidAmount} placeholder={t("invoices.form.paidPlaceholder")} />
+              <FormField inputType="number" label={t("invoices.fields.discount")} min="0" value={invoiceForm.discount} onChange={(value) => updateInvoiceTotalInput({ discount: value })} placeholder={t("invoices.form.discountPlaceholder")} error={discountErrorKey ? t(discountErrorKey) : undefined} />
+              <PercentField label={t("invoices.fields.taxPercentage")} value={invoiceForm.taxPercentage} onChange={(value) => updateInvoiceTotalInput({ taxPercentage: value })} placeholder={t("invoices.form.taxPercentagePlaceholder")} error={taxPercentageErrorKey ? t(taxPercentageErrorKey) : undefined} />
+              <FormField inputType="number" label={t("invoices.fields.paidAmount")} min="0" value={invoiceForm.paidAmount} onChange={updateInvoicePaidAmount} placeholder={t("invoices.form.paidPlaceholder")} error={invoicePaidAmountErrorKey ? t(invoicePaidAmountErrorKey) : undefined} />
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">{t("invoices.fields.paymentStatus")}</span>
                 <select value={paymentStatus} onChange={(event) => updateInvoicePaymentStatus(event.target.value as PaymentStatus)} className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600">
@@ -5449,10 +5857,45 @@ function InvoiceModal({
         </div>
         <div className="sticky bottom-0 flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white p-5 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} className="h-11 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">{t("invoices.form.cancel")}</button>
-          <button type="submit" className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800">{t("invoices.form.save")}</button>
+          <button type="submit" disabled={hasInvoiceFinancialErrors} className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300">{t("invoices.form.save")}</button>
         </div>
       </form>
     </div>
+  );
+}
+
+function InvoicePrintField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+        {label}
+      </dt>
+      <dd className="mt-1 break-words text-sm font-bold leading-snug text-slate-900">
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function InvoicePrintPaymentStatusBadge({
+  status,
+  t,
+}: {
+  status: PaymentStatus;
+  t: (key: string) => string;
+}) {
+  const statusClasses: Record<PaymentStatus, string> = {
+    paid: "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200",
+    partial: "bg-amber-50 text-amber-800 ring-1 ring-amber-200",
+    unpaid: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
+  };
+
+  return (
+    <span
+      className={`inline-flex w-fit items-center rounded-sm px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClasses[status]}`}
+    >
+      {t(`jobCards.paymentStatus.${status}`)}
+    </span>
   );
 }
 
@@ -5478,110 +5921,155 @@ function PrintInvoiceModal({
   }
 
   return (
-    <div className="invoice-print-backdrop fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
-      <div className="invoice-print-shell flex max-h-[94vh] w-full flex-col overflow-hidden rounded-lg bg-slate-100 shadow-xl sm:max-w-5xl print:max-h-none print:overflow-visible print:rounded-none print:bg-white print:shadow-none">
-        <div className="shrink-0 border-b border-slate-100 bg-white p-4 print:hidden">
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => window.print()} className="h-10 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800">{t("invoices.printNow")}</button>
-            <button type="button" onClick={onClose} className="h-10 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">{t("invoices.form.close")}</button>
+    <div className="invoice-print-backdrop fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/50 px-4 py-4">
+      <div className="invoice-print-shell flex max-h-[94vh] w-full flex-col overflow-hidden rounded-lg bg-slate-100 shadow-2xl sm:max-w-6xl print:max-h-none print:overflow-visible print:rounded-none print:bg-white print:shadow-none">
+        <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-3 print:hidden">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+              {t("invoices.printButton")}
+            </p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => window.print()} className="h-9 rounded bg-slate-900 px-5 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-slate-700">{t("invoices.printNow")}</button>
+              <button type="button" onClick={onClose} className="h-9 rounded border border-slate-200 px-5 text-xs font-bold uppercase tracking-wider text-slate-600 transition hover:bg-slate-50">{t("invoices.form.close")}</button>
+            </div>
           </div>
         </div>
-        <div className="invoice-print-page max-h-[84vh] flex-1 overflow-y-auto p-4 sm:p-6 print:max-h-none print:overflow-visible print:p-0">
-          <section className="invoice-sheet mx-auto min-h-[1120px] w-full max-w-[820px] bg-white p-8 shadow-sm ring-1 ring-slate-200 sm:p-10 print:min-h-0 print:max-w-none print:p-0 print:shadow-none print:ring-0">
-            <div className="invoice-header flex flex-col gap-6 border-b-2 border-slate-900 pb-6 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-3xl font-black tracking-normal text-slate-950">{settings.workshopName}</h2>
-                <p className="mt-2 text-base font-semibold text-slate-700">{settings.englishSubtitle}</p>
-                <p className="mt-1 text-base font-semibold text-slate-700" lang="ar" dir="rtl">
-                  {settings.arabicSubtitle}
+        <div className="invoice-print-page max-h-[84vh] flex-1 overflow-y-auto p-5 sm:p-8 print:max-h-none print:overflow-visible print:p-0">
+          <section className="invoice-sheet mx-auto w-full max-w-[900px] bg-white p-10 shadow-md ring-1 ring-slate-200 sm:p-12 print:min-h-0 print:max-w-none print:p-0 print:shadow-none print:ring-0">
+            <div className="invoice-header flex flex-col gap-6 pb-6 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h2 className="text-[34px] font-black leading-none tracking-tight text-slate-950">{settings.workshopName}</h2>
+                <div className="mt-3 flex flex-col gap-0.5">
+                  <p className="text-sm font-semibold text-slate-600">{settings.englishSubtitle}</p>
+                  <p className="text-sm font-semibold text-slate-600" lang="ar" dir="rtl">
+                    {settings.arabicSubtitle}
+                  </p>
+                </div>
+                <p className="mt-3 text-sm font-bold tracking-wide text-slate-900" dir="ltr">
+                  {formatPhone(settings.phoneNumber)}
                 </p>
-                <p className="mt-3 text-sm font-bold text-slate-900" dir="ltr">{formatPhone(settings.phoneNumber)}</p>
               </div>
-              <div className="invoice-number-card rounded-lg border border-slate-200 bg-slate-50 p-4 text-start sm:min-w-64 sm:text-end">
-                <p className="text-xs font-medium uppercase text-slate-400">{t("invoices.fields.invoiceNumber")}</p>
-                <h3 className="mt-1 text-2xl font-black text-slate-950">{invoice.invoiceNumber}</h3>
-                <p className="mt-2 text-sm font-semibold text-slate-700">{formatDate(invoice.invoiceDate)}</p>
+              <div className="invoice-number-card shrink-0 rounded-sm border border-slate-200 bg-slate-50 p-5 text-start sm:min-w-[270px] sm:text-end">
+                <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{t("invoices.fields.invoiceNumber")}</p>
+                <h3 className="mt-1 text-[30px] font-black leading-none tracking-tight text-slate-950">{invoice.invoiceNumber}</h3>
+                <div className="mt-3 border-t border-slate-200 pt-3">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{t("invoices.fields.invoiceDate")}</p>
+                  <p className="mt-0.5 text-sm font-bold text-slate-800">{formatDate(invoice.invoiceDate)}</p>
+                </div>
                 <div className="mt-3 flex sm:justify-end">
-                  <PaymentStatusBadge status={invoice.paymentStatus} t={t} />
+                  <InvoicePrintPaymentStatusBadge status={invoice.paymentStatus} t={t} />
                 </div>
               </div>
             </div>
 
-            <div className="invoice-detail-grid mt-6 grid gap-4 sm:grid-cols-2">
-              <section className="invoice-detail-card rounded-lg border border-slate-200 p-5">
-                <h4 className="border-b border-slate-100 pb-2 text-base font-bold text-slate-900">{t("invoices.print.customerDetails")}</h4>
-                <dl className="mt-3 grid gap-2 text-sm">
-                  <CustomerField label={t("invoices.fields.customerName")} value={invoice.customerName} />
-                  <CustomerField label={t("invoices.fields.customerPhone")} value={formatPhone(invoice.customerPhone)} />
-                  <CustomerField label={t("invoices.fields.paymentStatus")} value={t(`jobCards.paymentStatus.${invoice.paymentStatus}`)} />
+            <div className="invoice-header-rule h-px bg-slate-900" />
+
+            <div className="invoice-detail-grid mt-5 grid gap-4 sm:grid-cols-2">
+              <section className="invoice-detail-card rounded-sm border border-slate-200 bg-white p-5">
+                <h4 className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{t("invoices.print.customerDetails")}</h4>
+                <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3.5 border-t border-slate-100 pt-3">
+                  <InvoicePrintField label={t("invoices.fields.customerName")} value={invoice.customerName} />
+                  <InvoicePrintField label={t("invoices.fields.customerPhone")} value={formatPhone(invoice.customerPhone)} />
+                  <InvoicePrintField label={t("invoices.fields.paymentStatus")} value={t(`jobCards.paymentStatus.${invoice.paymentStatus}`)} />
                 </dl>
               </section>
-              <section className="invoice-detail-card rounded-lg border border-slate-200 p-5">
-                <h4 className="border-b border-slate-100 pb-2 text-base font-bold text-slate-900">{t("invoices.print.vehicleDetails")}</h4>
-                <dl className="mt-3 grid gap-2 text-sm">
-                  <CustomerField label={t("invoices.fields.vehicle")} value={invoice.vehicle} />
-                  <CustomerField label={t("invoices.fields.plateNumber")} value={invoice.plateNumber} />
-                  <CustomerField label={t("invoices.fields.jobCardNumber")} value={invoice.jobCardNumber} />
+              <section className="invoice-detail-card rounded-sm border border-slate-200 bg-white p-5">
+                <h4 className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{t("invoices.print.vehicleDetails")}</h4>
+                <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3.5 border-t border-slate-100 pt-3">
+                  <InvoicePrintField label={t("invoices.fields.vehicle")} value={invoice.vehicle} />
+                  <InvoicePrintField label={t("invoices.fields.plateNumber")} value={invoice.plateNumber} />
+                  <InvoicePrintField label={t("invoices.fields.jobCardNumber")} value={invoice.jobCardNumber} />
                 </dl>
               </section>
             </div>
 
-            <section className="invoice-work mt-6">
-              <h4 className="text-base font-bold text-slate-900">{t("invoices.fields.workPerformed")}</h4>
-              <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">{invoice.workPerformed}</p>
+            <section className="invoice-work mt-4">
+              <div className="rounded-sm border border-slate-200 bg-white p-5">
+                <h4 className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{t("invoices.fields.workPerformed")}</h4>
+                <p className="mt-2 border-t border-slate-100 pt-2 text-sm leading-relaxed text-slate-800">{invoice.workPerformed}</p>
+              </div>
             </section>
 
-            <section className="invoice-parts mt-6 overflow-hidden rounded-lg border border-slate-200">
+            <section className="invoice-parts mt-4 overflow-hidden rounded-sm border border-slate-200">
               <table className="w-full border-collapse text-sm">
-                <thead className="bg-slate-900 text-xs font-bold uppercase text-white">
-                  <tr>
-                    <th className="w-[48%] px-4 py-3 text-start">{t("invoices.print.part")}</th>
-                    <th className="w-[14%] px-4 py-3 text-center">{t("jobCards.parts.quantity")}</th>
-                    <th className="w-[19%] px-4 py-3 text-center">{t("jobCards.parts.unitSellingPrice")}</th>
-                    <th className="w-[19%] px-4 py-3 text-end">{t("jobCards.parts.lineTotal")}</th>
+                <thead>
+                  <tr className="bg-slate-900 text-white">
+                    <th className="w-[46%] px-5 py-3 text-start text-[9px] font-bold uppercase tracking-[0.18em]">{t("invoices.print.part")}</th>
+                    <th className="w-[14%] px-4 py-3 text-center text-[9px] font-bold uppercase tracking-[0.18em]">{t("jobCards.parts.quantity")}</th>
+                    <th className="w-[20%] px-4 py-3 text-center text-[9px] font-bold uppercase tracking-[0.18em]">{t("jobCards.parts.unitSellingPrice")}</th>
+                    <th className="w-[20%] px-5 py-3 text-end text-[9px] font-bold uppercase tracking-[0.18em]">{t("jobCards.parts.lineTotal")}</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {invoice.parts.length > 0 ? invoice.parts.map((part) => (
-                    <tr key={part.rowId} className="border-t border-slate-100">
-                      <td className="px-4 py-3 align-top">
+                <tbody className="divide-y divide-slate-100">
+                  {invoice.parts.length > 0 ? invoice.parts.map((part, index) => (
+                    <tr key={part.rowId} className={index % 2 === 1 ? "bg-slate-50/60" : "bg-white"}>
+                      <td className="px-5 py-3 align-top">
                         <p className="font-semibold text-slate-900">{part.itemName}</p>
                         {part.arabicItemName ? (
-                          <p className="text-xs text-slate-500">{part.arabicItemName}</p>
+                          <p className="mt-0.5 text-xs text-slate-500" lang="ar" dir="rtl">{part.arabicItemName}</p>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3 text-center align-top">{part.quantity}</td>
-                      <td className="px-4 py-3 text-center align-top">{formatMoney(part.unitSellingPrice)}</td>
-                      <td className="px-4 py-3 text-end font-semibold align-top">{formatMoney(part.lineTotal)}</td>
+                      <td className="px-4 py-3 text-center align-top text-slate-700">{part.quantity}</td>
+                      <td className="px-4 py-3 text-center align-top text-slate-700">{formatMoney(part.unitSellingPrice)}</td>
+                      <td className="px-5 py-3 text-end align-top font-bold text-slate-900">{formatMoney(part.lineTotal)}</td>
                     </tr>
                   )) : (
-                    <tr className="border-t border-slate-100">
-                      <td colSpan={4} className="px-4 py-4 text-sm text-slate-500">{t("jobCards.parts.empty")}</td>
+                    <tr>
+                      <td colSpan={4} className="px-5 py-5 text-sm text-slate-400">{t("jobCards.parts.empty")}</td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </section>
 
-            <div className="invoice-totals mt-6 grid gap-6 sm:grid-cols-[1fr_320px]">
-              {settings.showQrPlaceholder ? (
-                <div className="invoice-qr flex size-36 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 p-4 text-center text-xs font-bold uppercase text-slate-400">
-                  {t("invoices.print.qrPlaceholder")}
+            <div className="invoice-totals mt-4 grid gap-4 sm:grid-cols-[1fr_400px]">
+              <div className="invoice-support grid content-start gap-3">
+                {settings.showQrPlaceholder ? (
+                  <div className="invoice-qr flex size-28 items-center justify-center rounded-sm border-2 border-dashed border-slate-300 bg-slate-50 p-3 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                    {t("invoices.print.qrPlaceholder")}
+                  </div>
+                ) : null}
+                <section className="invoice-warranty rounded-sm border border-slate-200 bg-slate-50 p-4">
+                  <h4 className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{t("invoices.print.warrantyTitle")}</h4>
+                  <p className="mt-2 border-t border-slate-200 pt-2 text-sm leading-relaxed text-slate-700">
+                    {invoice.notes || t("invoices.print.warrantyBody")}
+                  </p>
+                </section>
+              </div>
+              <dl className="invoice-total-card rounded-sm border border-slate-200 bg-white">
+                <div className="divide-y divide-slate-100 px-5 pt-4">
+                  <div className="flex justify-between gap-4 pb-2.5"><dt className="text-sm text-slate-600">{t("invoices.fields.laborCost")}</dt><dd className="text-sm font-semibold tabular-nums text-slate-800">{formatMoney(invoice.laborCost)}</dd></div>
+                  <div className="flex justify-between gap-4 py-2.5"><dt className="text-sm text-slate-600">{t("invoices.fields.partsCost")}</dt><dd className="text-sm font-semibold tabular-nums text-slate-800">{formatMoney(invoice.partsCost)}</dd></div>
+                  <div className="flex justify-between gap-4 py-2.5"><dt className="text-sm text-slate-600">{t("invoices.fields.discount")}</dt><dd className="text-sm font-semibold tabular-nums text-slate-800">{formatMoney(invoice.discount)}</dd></div>
+                  <div className="flex justify-between gap-4 py-2.5"><dt className="text-sm text-slate-600">{t("invoices.fields.taxPercentage")}</dt><dd className="text-sm font-semibold tabular-nums text-slate-800">{invoice.taxPercentage}%</dd></div>
+                  <div className="flex justify-between gap-4 py-2.5"><dt className="text-sm text-slate-600">{t("invoices.fields.taxAmount")}</dt><dd className="text-sm font-semibold tabular-nums text-slate-800">{formatMoney(invoice.taxAmount)}</dd></div>
                 </div>
-              ) : (
-                <div />
-              )}
-              <dl className="invoice-total-card grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
-                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.laborCost")}</dt><dd className="font-semibold">{formatMoney(invoice.laborCost)}</dd></div>
-                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.partsCost")}</dt><dd className="font-semibold">{formatMoney(invoice.partsCost)}</dd></div>
-                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.discount")}</dt><dd className="font-semibold">{formatMoney(invoice.discount)}</dd></div>
-                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.taxPercentage")}</dt><dd className="font-semibold">{invoice.taxPercentage}%</dd></div>
-                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.taxAmount")}</dt><dd className="font-semibold">{formatMoney(invoice.taxAmount)}</dd></div>
-                <div className="flex justify-between gap-4 border-y border-slate-300 py-3 text-xl font-black text-slate-950"><dt>{t("invoices.fields.grandTotal")}</dt><dd>{formatMoney(invoice.grandTotal)}</dd></div>
-                <div className="flex justify-between gap-4"><dt>{t("invoices.fields.paidAmount")}</dt><dd className="font-semibold">{formatMoney(invoice.paidAmount)}</dd></div>
-                <div className="flex justify-between gap-4 text-base font-black text-emerald-800"><dt>{t("invoices.fields.remainingBalance")}</dt><dd>{formatMoney(invoice.remainingBalance)}</dd></div>
+                <div className="mx-0 mt-0 flex items-center justify-between gap-4 bg-slate-900 px-5 py-4">
+                  <dt className="text-sm font-bold uppercase tracking-widest text-slate-300">{t("invoices.fields.grandTotal")}</dt>
+                  <dd className="text-2xl font-black tabular-nums tracking-tight text-white">{formatMoney(invoice.grandTotal)}</dd>
+                </div>
+                <div className="divide-y divide-slate-100 px-5 pb-4">
+                  <div className="flex justify-between gap-4 py-2.5"><dt className="text-sm text-slate-600">{t("invoices.fields.paidAmount")}</dt><dd className="text-sm font-semibold tabular-nums text-slate-800">{formatMoney(invoice.paidAmount)}</dd></div>
+                  <div className="flex justify-between gap-4 pt-2.5"><dt className="text-sm font-bold text-slate-900">{t("invoices.fields.remainingBalance")}</dt><dd className="text-base font-black tabular-nums text-slate-950">{formatMoney(invoice.remainingBalance)}</dd></div>
+                </div>
               </dl>
             </div>
+
+            <div className="invoice-signatures mt-5 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-sm border border-slate-200 bg-white px-5 py-4">
+                <div className="h-9 border-b border-slate-300" />
+                <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{t("invoices.print.technicianSignature")}</p>
+              </div>
+              <div className="rounded-sm border border-slate-200 bg-white px-5 py-4">
+                <div className="h-9 border-b border-slate-300" />
+                <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{t("invoices.print.customerSignature")}</p>
+              </div>
+            </div>
+
+            <footer className="invoice-footer mt-4 border-t border-slate-900 pt-3 text-center">
+              <p className="text-sm font-black uppercase tracking-[0.18em] text-slate-950">{t("invoices.print.thankYou")}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{t("invoices.print.footerNote")}</p>
+            </footer>
           </section>
         </div>
       </div>
@@ -5609,9 +6097,10 @@ function SettingsSection({
   t: (key: string) => string;
 }) {
   const directionPreview = settings.defaultLanguage === "ar" ? "rtl" : "ltr";
+  const hasPhoneValue = Boolean(cleanSaudiPhoneInput(settings.phoneNumber));
+  const isCurrentPhoneValid = isValidSaudiPhone(settings.phoneNumber);
   const showPhoneError =
-    settingsPhoneError ||
-    (Boolean(settings.phoneNumber) && !isValidSaudiPhone(settings.phoneNumber));
+    (settingsPhoneError || hasPhoneValue) && !isCurrentPhoneValid;
 
   return (
     <form onSubmit={onSave}>
@@ -5762,6 +6251,8 @@ function SettingsCard({
   subtitle: string;
   title: string;
 }) {
+  const expenseAmountErrorKey = getFinancialInputErrorKey(expenseForm.amount);
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4">
@@ -6288,7 +6779,7 @@ function ExpenseModal({
         <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-28">
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label={t("expenses.fields.title")} value={expenseForm.title} onChange={(value) => onUpdateForm({ ...expenseForm, title: value })} placeholder={t("expenses.form.titlePlaceholder")} required />
-            <FormField inputType="number" min="0" label={t("expenses.fields.amount")} value={expenseForm.amount} onChange={(value) => onUpdateForm({ ...expenseForm, amount: value })} placeholder={t("expenses.form.amountPlaceholder")} required />
+            <FormField inputType="number" min="0" label={t("expenses.fields.amount")} value={expenseForm.amount} onChange={(value) => onUpdateForm({ ...expenseForm, amount: value })} placeholder={t("expenses.form.amountPlaceholder")} error={expenseAmountErrorKey ? t(expenseAmountErrorKey) : undefined} required />
             <label className="block">
               <span className="text-sm font-medium text-slate-700">{t("expenses.fields.category")}</span>
               <select value={expenseForm.category} onChange={(event) => onUpdateForm({ ...expenseForm, category: event.target.value as ExpenseCategory })} className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600">
@@ -6543,8 +7034,8 @@ function PurchaseModal({
     .map((itemLine) => itemLine.inventoryItemId)
     .filter(Boolean);
   const getFormCost = (value: string) => {
-    const parsedValue = Number(value);
-    return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+    const parsedValue = parseSafeNumber(value);
+    return parsedValue !== null && parsedValue > 0 ? parsedValue : 0;
   };
   const getLineTotal = (itemLine: PurchaseItemFormLine) =>
     getFormCost(itemLine.quantity) * getFormCost(itemLine.costPrice);
@@ -6700,6 +7191,11 @@ function PurchaseModal({
                       const selectedItem = inventoryItems.find(
                         (item) => item.id === Number(itemLine.inventoryItemId),
                       );
+                      const quantityErrorKey = getFinancialInputErrorKey(
+                        itemLine.quantity,
+                        "toast.quantityInvalid",
+                      );
+                      const costErrorKey = getFinancialInputErrorKey(itemLine.costPrice);
                       const showDuplicateWarning =
                         duplicateRowId === itemLine.rowId ||
                         (Boolean(itemLine.inventoryItemId) &&
@@ -6794,8 +7290,16 @@ function PurchaseModal({
                                   })
                                 }
                                 placeholder={t("purchases.items.quantityPlaceholder")}
-                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 lg:mt-0"
+                                aria-invalid={Boolean(quantityErrorKey)}
+                                className={`mt-1 h-10 w-full rounded-md border bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 lg:mt-0 ${
+                                  quantityErrorKey ? "border-rose-300" : "border-slate-200"
+                                }`}
                               />
+                              {quantityErrorKey ? (
+                                <p className="mt-1 text-xs font-medium text-rose-600">
+                                  {t(quantityErrorKey)}
+                                </p>
+                              ) : null}
                             </label>
 
                             <label className="block">
@@ -6812,8 +7316,16 @@ function PurchaseModal({
                                   })
                                 }
                                 placeholder={t("purchases.items.costPlaceholder")}
-                                className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 lg:mt-0"
+                                aria-invalid={Boolean(costErrorKey)}
+                                className={`mt-1 h-10 w-full rounded-md border bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 lg:mt-0 ${
+                                  costErrorKey ? "border-rose-300" : "border-slate-200"
+                                }`}
                               />
+                              {costErrorKey ? (
+                                <p className="mt-1 text-xs font-medium text-rose-600">
+                                  {t(costErrorKey)}
+                                </p>
+                              ) : null}
                             </label>
 
                             <p className="text-base font-bold text-slate-950 lg:text-center">
@@ -7403,6 +7915,7 @@ function RecordTabs({
 }
 
 function FormField({
+  error,
   inputType = "text",
   label,
   min,
@@ -7411,6 +7924,7 @@ function FormField({
   required,
   value,
 }: {
+  error?: string;
   inputType?: string;
   label: string;
   min?: string;
@@ -7429,8 +7943,17 @@ function FormField({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         required={required}
-        className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10"
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? `${label.replace(/\s+/g, "-")}-error` : undefined}
+        className={`mt-1 h-11 w-full rounded-md border bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 ${
+          error ? "border-rose-300" : "border-slate-200"
+        }`}
       />
+      {error ? (
+        <p id={`${label.replace(/\s+/g, "-")}-error`} className="mt-1 text-xs font-medium text-rose-600">
+          {error}
+        </p>
+      ) : null}
     </label>
   );
 }
@@ -7477,11 +8000,13 @@ function PhoneField({
 }
 
 function PercentField({
+  error,
   label,
   onChange,
   placeholder,
   value,
 }: {
+  error?: string;
   label: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -7490,19 +8015,25 @@ function PercentField({
   return (
     <label className="block">
       <span className="text-sm font-medium text-slate-700">{label}</span>
-      <div className="mt-1 flex h-11 overflow-hidden rounded-md border border-slate-200 bg-white transition focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/10">
+      <div className={`mt-1 flex h-11 overflow-hidden rounded-md border bg-white transition focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/10 ${
+        error ? "border-rose-300" : "border-slate-200"
+      }`}>
         <input
           type="number"
           min="0"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
+          aria-invalid={Boolean(error)}
           className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm outline-none placeholder:text-slate-400"
         />
         <span className="flex w-12 shrink-0 items-center justify-center border-s border-slate-200 bg-slate-50 text-sm font-bold text-slate-600">
           %
         </span>
       </div>
+      {error ? (
+        <p className="mt-1 text-xs font-medium text-rose-600">{error}</p>
+      ) : null}
     </label>
   );
 }

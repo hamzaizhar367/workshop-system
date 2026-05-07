@@ -64,31 +64,6 @@ function getStoredLocale() {
   }
 }
 
-function saveStoredLocale(locale: Locale) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    const storedData = JSON.parse(
-      window.localStorage.getItem(demoDataStorageKey) ?? "{}",
-    ) as { settings?: Record<string, unknown> };
-
-    window.localStorage.setItem(
-      demoDataStorageKey,
-      JSON.stringify({
-        ...storedData,
-        settings: {
-          ...(storedData.settings ?? {}),
-          defaultLanguage: locale,
-        },
-      }),
-    );
-  } catch {
-    // Demo language persistence should never block the UI toggle.
-  }
-}
-
 const subscribeToHydration = () => () => {};
 const getHydratedSnapshot = () => true;
 const getServerHydrationSnapshot = () => false;
@@ -113,10 +88,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       locale,
       dir,
       isLanguageReady,
-      setLocale: (nextLocale) => {
-        saveStoredLocale(nextLocale);
-        setLocaleState(nextLocale);
-      },
+      setLocale: setLocaleState,
       t: (key) => {
         const message = getMessage(dictionaries[locale], key);
         return typeof message === "string" ? message : key;

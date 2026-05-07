@@ -28,7 +28,11 @@
     "activeJobExists": "This vehicle already has an active job",
     "insufficientStock": "Insufficient stock for selected parts",
     "duplicateParts": "Remove duplicate parts before saving",
-    "purchaseItemsRequired": "Add at least one purchased item"
+    "purchaseItemsRequired": "Add at least one purchased item",
+    "amountInvalid": "Enter a valid amount.",
+    "paidAmountTooHigh": "Paid amount cannot be greater than total amount.",
+    "laborCostInvalid": "Enter a valid labor cost.",
+    "quantityInvalid": "Quantity cannot be negative."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -97,7 +101,7 @@
       "close": "Close",
       "namePlaceholder": "Enter customer name",
       "phonePlaceholder": "Enter phone number",
-      "phoneInvalid": "Enter a valid Saudi mobile number like +966 55 765 4321.",
+      "phoneInvalid": "Enter a valid phone number.",
       "cityPlaceholder": "Enter city",
       "totalVehiclesPlaceholder": "Enter total vehicles",
       "totalVisitsPlaceholder": "Enter total visits",
@@ -560,7 +564,13 @@
       "customerDetails": "Customer details",
       "vehicleDetails": "Vehicle details",
       "part": "Part",
-      "qrPlaceholder": "QR / Barcode Placeholder"
+      "qrPlaceholder": "QR / Barcode Placeholder",
+      "warrantyTitle": "Warranty / service notes",
+      "warrantyBody": "Please keep this invoice for service reference. Warranty applies only to listed work and parts according to workshop inspection terms.",
+      "technicianSignature": "Technician signature",
+      "customerSignature": "Customer signature",
+      "thankYou": "Thank you for choosing CAR DC9",
+      "footerNote": "Electronic Alignment & Car Services"
     }
   },
   "jobCards": {
