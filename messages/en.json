@@ -32,7 +32,13 @@
     "amountInvalid": "Enter a valid amount.",
     "paidAmountTooHigh": "Paid amount cannot be greater than total amount.",
     "laborCostInvalid": "Enter a valid labor cost.",
-    "quantityInvalid": "Quantity cannot be negative."
+    "quantityInvalid": "Quantity cannot be negative.",
+    "duplicateActiveInvoice": "This job card already has an active invoice.",
+    "invoicedJobCardLocked": "This job card has an active invoice. Financial fields are locked.",
+    "invoiceTotalsLocked": "Invoice totals are locked after creation. You can still update payment and notes.",
+    "correctionReasonRequired": "Enter a correction reason before revising the invoice.",
+    "correctedInvoiceRequiresCompletedJob": "Complete the corrected job card before creating the replacement invoice.",
+    "recordPermanentlyDeleted": "Record permanently deleted."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -44,6 +50,7 @@
     "expenses": "Expenses",
     "invoices": "Invoices",
     "reports": "Reports",
+    "recycleBin": "Recycle Bin",
     "settings": "Settings"
   },
   "topbar": {
@@ -61,7 +68,7 @@
   },
   "cards": {
     "activeJobs": "Active Jobs",
-    "todaysRevenue": "Today\u2019s Revenue",
+    "todaysRevenue": "Today’s Revenue",
     "todayExpenses": "Today Expenses",
     "todayProfit": "Today Profit",
     "pendingPayments": "Pending Payments",
@@ -428,6 +435,51 @@
       "lowStock": "Low Stock"
     }
   },
+  "recycleBin": {
+    "title": "Recycle Bin",
+    "subtitle": "Recover archived records and review protected history.",
+    "recordCount": "{count} archived records",
+    "searchLabel": "Search archived records",
+    "searchPlaceholder": "Search by name, phone, plate, invoice, job card, item, or details",
+    "emptyTitle": "No archived records found",
+    "emptyBody": "Archived records for the selected filter will appear here.",
+    "filters": {
+      "all": "All",
+      "customers": "Customers",
+      "vehicles": "Vehicles",
+      "jobCards": "Job Cards",
+      "inventory": "Inventory",
+      "purchases": "Purchases",
+      "expenses": "Expenses",
+      "invoices": "Invoices"
+    },
+    "types": {
+      "customers": "Customer",
+      "vehicles": "Vehicle",
+      "jobCards": "Job Card",
+      "inventory": "Inventory",
+      "purchases": "Purchase",
+      "expenses": "Expense",
+      "invoices": "Invoice"
+    },
+    "delete": {
+      "button": "Delete Permanently",
+      "protectedStatus": "Protected record",
+      "safeToDeleteStatus": "Safe delete eligible",
+      "allowedHelper": "Permanent delete is available after DELETE confirmation and owner code approval.",
+      "protectedFinancial": "Permanent delete is disabled for protected financial records.",
+      "customerLinked": "This customer has linked vehicles, job cards, or invoices.",
+      "vehicleLinked": "This vehicle has linked job cards or invoices.",
+      "inventoryLinked": "This inventory item has job card usage or purchase history.",
+      "modalTitle": "Permanently delete record?",
+      "modalBody": "This will permanently delete {name}. This cannot be undone.",
+      "confirmLabel": "Type DELETE to confirm",
+      "ownerCodeLabel": "Owner Delete Code",
+      "ownerCodePlaceholder": "Enter owner delete code",
+      "ownerCodeHelper": "For demo/offline mode only. Production must verify this code securely.",
+      "confirmButton": "Delete Permanently"
+    }
+  },
   "settings": {
     "title": "Settings",
     "subtitle": "Configure workshop profile, invoice defaults, and display preferences",
@@ -518,6 +570,8 @@
     "addButton": "Create Invoice",
     "printButton": "Print/View Invoice",
     "printNow": "Print",
+    "correctButton": "Revise Invoice",
+    "correctedLabel": "Corrected invoice",
     "searchLabel": "Search invoices",
     "searchPlaceholder": "Search by invoice, customer, phone, vehicle, plate, or job card",
     "activeRecordCount": "{count} active invoice records",
@@ -563,6 +617,13 @@
       "notesPlaceholder": "Add optional notes",
       "save": "Save Invoice",
       "cancel": "Cancel"
+    },
+    "correction": {
+      "title": "Revise Invoice",
+      "warning": "Invoice totals are locked for accounting integrity. Revising will archive this invoice for history, unlock the linked job card for correction, and then create a new corrected active invoice.",
+      "reasonLabel": "Correction reason",
+      "reasonPlaceholder": "Explain why this invoice is being corrected",
+      "confirm": "Start Correction"
     },
     "print": {
       "customerDetails": "Customer details",

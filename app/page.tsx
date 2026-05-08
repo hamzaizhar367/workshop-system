@@ -21,6 +21,7 @@ type SectionKey =
   | "expenses"
   | "invoices"
   | "reports"
+  | "recycleBin"
   | "settings";
 
 type CustomerType = "new" | "repeat";
@@ -63,6 +64,30 @@ type ExpenseCategory =
 type ExpensePaymentMethod = "cash" | "card" | "bankTransfer";
 type ReportRange = "today" | "week" | "month" | "all";
 type AppLanguage = "en" | "ar";
+type RecycleBinFilter =
+  | "all"
+  | "customers"
+  | "vehicles"
+  | "jobCards"
+  | "inventory"
+  | "purchases"
+  | "expenses"
+  | "invoices";
+type RecycleBinRecordType = Exclude<RecycleBinFilter, "all">;
+type RecycleBinRecord = {
+  id: number;
+  type: RecycleBinRecordType;
+  title: string;
+  subtitle: string;
+  details: string;
+  searchText: string;
+  status?: string;
+};
+type PendingPermanentDelete = {
+  id: number;
+  type: RecycleBinRecordType;
+  title: string;
+};
 
 const getPaymentStatusFromAmounts = (paidAmount: number, grandTotal: number) => {
   if (paidAmount <= 0) {
@@ -314,6 +339,9 @@ type Invoice = {
   paymentStatus: PaymentStatus;
   notes: string;
   archived: boolean;
+  correctionStatus?: "corrected";
+  correctionReason?: string;
+  correctedAt?: string;
 };
 
 type InvoiceForm = {
@@ -339,7 +367,19 @@ const navigationItems: Array<{ key: SectionKey; translationKey: string }> = [
   { key: "expenses", translationKey: "nav.expenses" },
   { key: "invoices", translationKey: "nav.invoices" },
   { key: "reports", translationKey: "nav.reports" },
+  { key: "recycleBin", translationKey: "nav.recycleBin" },
   { key: "settings", translationKey: "nav.settings" },
+];
+
+const recycleBinFilters: RecycleBinFilter[] = [
+  "all",
+  "customers",
+  "vehicles",
+  "jobCards",
+  "inventory",
+  "purchases",
+  "expenses",
+  "invoices",
 ];
 
 const dashboardFinancialCardDefinitions = [
@@ -970,6 +1010,8 @@ type DemoPersistedData = {
 };
 
 const isBrowser = () => typeof window !== "undefined";
+const createRecordId = () => Date.now();
+const OWNER_DELETE_CODE = "DC9-OWNER-2026";
 const subscribeToHydration = () => () => {};
 const getHydratedSnapshot = () => true;
 const getServerHydrationSnapshot = () => false;
@@ -1516,7 +1558,18 @@ export default function Home() {
   const [invoiceForm, setInvoiceForm] = useState<InvoiceForm>(emptyInvoiceForm);
   const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null);
   const [printInvoiceId, setPrintInvoiceId] = useState<number | null>(null);
+  const [isPrintRendering, setIsPrintRendering] = useState(false);
+  const [correctionInvoiceId, setCorrectionInvoiceId] = useState<number | null>(null);
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correctingJobCardId, setCorrectingJobCardId] = useState<number | null>(null);
   const [reportRange, setReportRange] = useState<ReportRange>("month");
+  const [recycleBinFilter, setRecycleBinFilter] = useState<RecycleBinFilter>("all");
+  const [recycleBinSearch, setRecycleBinSearch] = useState("");
+  const [pendingPermanentDelete, setPendingPermanentDelete] =
+    useState<PendingPermanentDelete | null>(null);
+  const [permanentDeleteConfirmation, setPermanentDeleteConfirmation] =
+    useState("");
+  const [ownerDeleteCodeInput, setOwnerDeleteCodeInput] = useState("");
   const [settingsDraft, setSettingsDraft] = useState<WorkshopSettings>(
     initialDemoData.settings,
   );
@@ -1545,12 +1598,27 @@ export default function Home() {
   }, [appData, isAppHydrated]);
 
   useEffect(() => {
-    document.body.classList.toggle("invoice-printing", printInvoiceId !== null);
+    document.body.classList.toggle(
+      "invoice-printing",
+      printInvoiceId !== null || isPrintRendering,
+    );
 
     return () => {
       document.body.classList.remove("invoice-printing");
     };
-  }, [printInvoiceId]);
+  }, [isPrintRendering, printInvoiceId]);
+
+  useEffect(() => {
+    const finishPrintRendering = () => {
+      setIsPrintRendering(false);
+    };
+
+    window.addEventListener("afterprint", finishPrintRendering);
+
+    return () => {
+      window.removeEventListener("afterprint", finishPrintRendering);
+    };
+  }, []);
 
   const formatPhone = (value: string) =>
     value ? formatSaudiPhone(value) : t("common.notAvailable");
@@ -1733,6 +1801,16 @@ export default function Home() {
   const activeInvoiceJobCardIds = new Set(
     invoices.filter((invoice) => !invoice.archived).map((invoice) => invoice.jobCardId),
   );
+  const hasActiveInvoiceForJobCard = (
+    jobCardId: number,
+    excludeInvoiceId?: number,
+  ) =>
+    invoices.some(
+      (invoice) =>
+        !invoice.archived &&
+        invoice.jobCardId === jobCardId &&
+        invoice.id !== excludeInvoiceId,
+    );
   const dashboardActiveJobs = jobCards.filter(
     (jobCard) =>
       !jobCard.archived &&
@@ -1866,6 +1944,130 @@ export default function Home() {
   const reportUnpaidInvoices = reportInvoices.filter(
     (invoice) => invoice.paymentStatus !== "paid" || invoice.remainingBalance > 0,
   );
+  const recycleBinRecords: RecycleBinRecord[] = [
+    ...customers
+      .filter((customer) => customer.archived)
+      .map((customer) => ({
+        id: customer.id,
+        type: "customers" as const,
+        title: customer.name,
+        subtitle: `${formatSaudiPhone(customer.phone)} - ${customer.city}`,
+        details: t(`customers.types.${customer.type}`),
+        searchText: [
+          customer.name,
+          customer.phone,
+          formatSaudiPhone(customer.phone),
+          customer.city,
+          customer.type,
+        ].join(" "),
+      })),
+    ...vehicles
+      .filter((vehicle) => vehicle.archived)
+      .map((vehicle) => ({
+        id: vehicle.id,
+        type: "vehicles" as const,
+        title: `${vehicle.make} ${vehicle.model}`,
+        subtitle: `${vehicle.plateNumber} - ${vehicle.ownerName}`,
+        details: `${vehicle.year} - ${vehicle.colorKey} - ${vehicle.vehicleTypeKey}`,
+        searchText: [
+          vehicle.ownerName,
+          vehicle.plateNumber,
+          vehicle.make,
+          vehicle.model,
+          vehicle.year,
+          vehicle.colorKey,
+          vehicle.vehicleTypeKey,
+        ].join(" "),
+      })),
+    ...jobCards
+      .filter((jobCard) => jobCard.archived)
+      .map((jobCard) => ({
+        id: jobCard.id,
+        type: "jobCards" as const,
+        title: jobCard.jobNumber,
+        subtitle: `${jobCard.customerName} - ${jobCard.vehicleLabel} - ${jobCard.plateNumber}`,
+        details: `${formatMoney(jobCard.laborCost + jobCard.partsCost)} - ${t(`vehicles.status.${jobCard.status}`)}`,
+        searchText: [
+          jobCard.jobNumber,
+          jobCard.customerName,
+          jobCard.vehicleLabel,
+          jobCard.plateNumber,
+          jobCard.mechanic,
+          jobCard.complaint,
+          jobCard.workPerformed,
+        ].join(" "),
+      })),
+    ...inventoryItems
+      .filter((item) => item.archived)
+      .map((item) => ({
+        id: item.id,
+        type: "inventory" as const,
+        title: item.itemName,
+        subtitle: `${item.arabicItemName} - ${item.sku}`,
+        details: `${item.category} - ${item.brand} - ${formatMoney(item.sellingPrice)}`,
+        searchText: [
+          item.itemName,
+          item.arabicItemName,
+          item.sku,
+          item.category,
+          item.brand,
+          item.supplierName,
+          item.location,
+        ].join(" "),
+      })),
+    ...expenses
+      .filter((expense) => expense.archived)
+      .map((expense) => ({
+        id: expense.id,
+        type: "expenses" as const,
+        title: expense.title,
+        subtitle: `${t(`expenses.category.${expense.category}`)} - ${formatDate(expense.date)}`,
+        details: `${formatMoney(expense.amount)} - ${t(`expenses.paymentMethod.${expense.paymentMethod}`)}`,
+        searchText: [
+          expense.title,
+          expense.category,
+          expense.amount,
+          expense.date,
+          expense.paymentMethod,
+          expense.notes,
+          expense.createdBy,
+        ].join(" "),
+      })),
+    ...invoices
+      .filter((invoice) => invoice.archived)
+      .map((invoice) => ({
+        id: invoice.id,
+        type: "invoices" as const,
+        title: invoice.invoiceNumber,
+        subtitle: `${invoice.customerName} - ${invoice.vehicle} - ${invoice.plateNumber}`,
+        details: `${formatMoney(invoice.grandTotal)} - ${t(`jobCards.paymentStatus.${invoice.paymentStatus}`)}`,
+        searchText: [
+          invoice.invoiceNumber,
+          invoice.customerName,
+          invoice.customerPhone,
+          invoice.vehicle,
+          invoice.plateNumber,
+          invoice.jobCardNumber,
+          invoice.workPerformed,
+          invoice.notes,
+          invoice.correctionReason ?? "",
+        ].join(" "),
+        status: invoice.correctionStatus ? t("invoices.correctedLabel") : undefined,
+      })),
+  ];
+  const filteredRecycleBinRecords = recycleBinRecords.filter((record) => {
+    const matchesFilter =
+      recycleBinFilter === "all" || record.type === recycleBinFilter;
+    const query = recycleBinSearch.trim().toLowerCase();
+    const matchesSearch =
+      !query ||
+      [record.title, record.subtitle, record.details, record.searchText]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+
+    return matchesFilter && matchesSearch;
+  });
 
   const getVehicleJobs = (vehicleId: number) => {
     return jobCards.filter((jobCard) => jobCard.vehicleId === vehicleId);
@@ -1907,11 +2109,11 @@ export default function Home() {
     return jobCards.filter((jobCard) => customerVehicleIds.has(jobCard.vehicleId));
   };
 
-  const formatNumber = (value: number) => {
+  function formatNumber(value: number) {
     return new Intl.NumberFormat(numberLocale).format(value);
-  };
+  }
 
-  const formatMoney = (value: number) => {
+  function formatMoney(value: number) {
     const currencyCode = /^[A-Z]{3}$/.test(settings.defaultCurrency)
       ? settings.defaultCurrency
       : "SAR";
@@ -1921,15 +2123,15 @@ export default function Home() {
       currency: currencyCode,
       maximumFractionDigits: 0,
     }).format(value);
-  };
+  }
 
-  const formatDate = (value: string) => {
+  function formatDate(value: string) {
     return new Intl.DateTimeFormat(numberLocale, {
       day: "numeric",
       month: "short",
       year: "numeric",
     }).format(new Date(value));
-  };
+  }
 
   const formatCardValue = (value: number, currency?: boolean) => {
     return currency ? formatMoney(value) : formatNumber(value);
@@ -2455,14 +2657,16 @@ export default function Home() {
   };
 
   const closeJobCardModal = () => {
+    if (editingJobCardId !== null && editingJobCardId === correctingJobCardId) {
+      setCorrectingJobCardId(null);
+    }
+
     setIsJobCardModalOpen(false);
     setEditingJobCardId(null);
     setJobCardForm(emptyJobCardForm);
   };
 
   const openNewJobCardFromDashboard = () => {
-    setActiveSection("jobCards");
-    setJobCardTab("active");
     openJobCardModal();
   };
 
@@ -2515,6 +2719,22 @@ export default function Home() {
     const partsCost = partsUsed.reduce((total, part) => total + part.lineTotal, 0);
     const laborCost = laborValidation.value;
     const totalAmount = laborCost + partsCost;
+    const hasActiveLinkedInvoice = editingJobCardId
+      ? hasActiveInvoiceForJobCard(editingJobCardId)
+      : false;
+
+    if (
+      existingJobCard &&
+      hasActiveLinkedInvoice &&
+      (existingJobCard.laborCost !== laborCost ||
+        existingJobCard.partsCost !== partsCost ||
+        existingJobCard.status !== jobCardForm.status ||
+        existingJobCard.vehicleId !== selectedVehicle.id)
+    ) {
+      showToast("toast.invoicedJobCardLocked");
+      return;
+    }
+
     const paidValidation = validatePaidAmount(jobCardForm.paidAmount, totalAmount);
 
     if (paidValidation.errorKey || paidValidation.value === null) {
@@ -2567,6 +2787,17 @@ export default function Home() {
     };
 
     if (editingJobCardId) {
+      const correctedJobCard: JobCard | null =
+        existingJobCard && editingJobCardId === correctingJobCardId
+          ? {
+              ...existingJobCard,
+              ...jobCardValues,
+              archived: jobCardValues.status === "cancelled"
+                ? true
+                : existingJobCard.archived,
+            }
+          : null;
+
       setJobCards((currentJobCards) =>
         currentJobCards.map((jobCard) =>
           jobCard.id === editingJobCardId
@@ -2579,12 +2810,22 @@ export default function Home() {
         ),
       );
       applyJobStockAdjustment(previousDeductedParts, nextDeductedParts);
+      if (correctedJobCard) {
+        setCorrectingJobCardId(null);
+        closeJobCardModal();
+        if (correctedJobCard.status === "completed" && !correctedJobCard.archived) {
+          openInvoiceModalForJobCard(correctedJobCard);
+        } else {
+          showToast("toast.correctedInvoiceRequiresCompletedJob");
+        }
+        return;
+      }
       closeJobCardModal();
       return;
     }
 
     const nextJobCard: JobCard = {
-      id: Date.now(),
+      id: createRecordId(),
       ...jobCardValues,
       archived: jobCardValues.status === "cancelled",
     };
@@ -3096,6 +3337,40 @@ export default function Home() {
     setIsInvoiceModalOpen(true);
   };
 
+  const openInvoiceModalForJobCard = (jobCard: JobCard) => {
+    const taxPercentage = settings.defaultVatPercentage;
+    const discount = 0;
+    const defaultPaidAmount = getDefaultInvoicePaidAmountFromJobCard(
+      jobCard,
+      discount,
+      parsePositiveNumber(taxPercentage),
+    );
+    const invoiceTotal = getInvoiceCalculations(
+      jobCard.laborCost,
+      jobCard.partsCost,
+      discount,
+      parsePositiveNumber(taxPercentage),
+      defaultPaidAmount,
+    );
+
+    setEditingInvoiceId(null);
+    setInvoiceForm({
+      ...emptyInvoiceForm,
+      jobCardId: String(jobCard.id),
+      invoiceDate: getTodayInputValue(),
+      dueDate: getTodayInputValue(),
+      taxPercentage,
+      paidAmount: String(defaultPaidAmount),
+      paymentStatus: getPaymentStatusFromAmounts(
+        defaultPaidAmount,
+        invoiceTotal.grandTotal,
+      ),
+    });
+    setInvoiceTab("active");
+    setActiveSection("invoices");
+    setIsInvoiceModalOpen(true);
+  };
+
   const closeInvoiceModal = () => {
     setIsInvoiceModalOpen(false);
     setEditingInvoiceId(null);
@@ -3210,6 +3485,11 @@ export default function Home() {
       return;
     }
 
+    if (hasActiveInvoiceForJobCard(selectedJobCard.id, editingInvoiceId ?? undefined)) {
+      showToast("toast.duplicateActiveInvoice");
+      return;
+    }
+
     const validationErrorKey = getInvoiceValidationErrorKey(selectedJobCard);
 
     if (validationErrorKey) {
@@ -3221,9 +3501,45 @@ export default function Home() {
       const existingInvoice = invoices.find((invoice) => invoice.id === editingInvoiceId);
       const invoiceValues = buildInvoiceValues(selectedJobCard, existingInvoice);
 
+      if (!existingInvoice) {
+        return;
+      }
+
+      const paidValidation = validatePaidAmount(
+        invoiceForm.paidAmount,
+        existingInvoice.grandTotal,
+      );
+
+      if (paidValidation.errorKey || paidValidation.value === null) {
+        showToast(paidValidation.errorKey);
+        return;
+      }
+
       setInvoices((currentInvoices) =>
         currentInvoices.map((invoice) =>
-          invoice.id === editingInvoiceId ? { ...invoice, ...invoiceValues } : invoice,
+          invoice.id === editingInvoiceId
+            ? {
+                ...invoice,
+                ...invoiceValues,
+                laborCost: existingInvoice.laborCost,
+                partsCost: existingInvoice.partsCost,
+                parts: existingInvoice.parts,
+                subtotal: existingInvoice.subtotal,
+                paidAmount: paidValidation.value,
+                discount: existingInvoice.discount,
+                taxPercentage: existingInvoice.taxPercentage,
+                taxAmount: existingInvoice.taxAmount,
+                grandTotal: existingInvoice.grandTotal,
+                remainingBalance: Math.max(
+                  0,
+                  existingInvoice.grandTotal - paidValidation.value,
+                ),
+                paymentStatus: getPaymentStatusFromAmounts(
+                  paidValidation.value,
+                  existingInvoice.grandTotal,
+                ),
+              }
+            : invoice,
         ),
       );
       closeInvoiceModal();
@@ -3242,12 +3558,221 @@ export default function Home() {
   };
 
   const setInvoiceArchived = (invoiceId: number, archived: boolean) => {
+    const targetInvoice = invoices.find((invoice) => invoice.id === invoiceId);
+
+    if (
+      targetInvoice &&
+      !archived &&
+      hasActiveInvoiceForJobCard(targetInvoice.jobCardId, targetInvoice.id)
+    ) {
+      showToast("toast.duplicateActiveInvoice");
+      return;
+    }
+
     setInvoices((currentInvoices) =>
       currentInvoices.map((invoice) =>
         invoice.id === invoiceId ? { ...invoice, archived } : invoice,
       ),
     );
     showToast(archived ? "toast.recordArchived" : "toast.recordRestored");
+  };
+
+  const openInvoiceCorrectionModal = (invoice: Invoice) => {
+    if (invoice.archived) {
+      return;
+    }
+
+    setCorrectionInvoiceId(invoice.id);
+    setCorrectionReason("");
+  };
+
+  const closeInvoiceCorrectionModal = () => {
+    setCorrectionInvoiceId(null);
+    setCorrectionReason("");
+  };
+
+  const confirmInvoiceCorrection = () => {
+    const reason = correctionReason.trim();
+    const invoiceToCorrect = correctionInvoiceId
+      ? invoices.find((invoice) => invoice.id === correctionInvoiceId)
+      : undefined;
+    const linkedJobCard = invoiceToCorrect
+      ? jobCards.find((jobCard) => jobCard.id === invoiceToCorrect.jobCardId)
+      : undefined;
+
+    if (!invoiceToCorrect || !linkedJobCard) {
+      closeInvoiceCorrectionModal();
+      return;
+    }
+
+    if (!reason) {
+      showToast("toast.correctionReasonRequired");
+      return;
+    }
+
+    if (hasActiveInvoiceForJobCard(invoiceToCorrect.jobCardId, invoiceToCorrect.id)) {
+      showToast("toast.duplicateActiveInvoice");
+      return;
+    }
+
+    setInvoices((currentInvoices) =>
+      currentInvoices.map((invoice) =>
+        invoice.id === invoiceToCorrect.id
+          ? {
+              ...invoice,
+              archived: true,
+              correctionStatus: "corrected",
+              correctionReason: reason,
+              correctedAt: new Date().toISOString(),
+            }
+          : invoice,
+      ),
+    );
+    setCorrectingJobCardId(linkedJobCard.id);
+    setInvoiceTab("archived");
+    closeInvoiceCorrectionModal();
+    openJobCardModal(linkedJobCard);
+  };
+
+  const restoreRecycleBinRecord = (record: RecycleBinRecord) => {
+    if (record.type === "customers") {
+      setCustomerArchived(record.id, false);
+      return;
+    }
+
+    if (record.type === "vehicles") {
+      setVehicleArchived(record.id, false);
+      return;
+    }
+
+    if (record.type === "jobCards") {
+      setJobCardArchived(record.id, false);
+      return;
+    }
+
+    if (record.type === "inventory") {
+      setInventoryItemArchived(record.id, false);
+      return;
+    }
+
+    if (record.type === "expenses") {
+      setExpenseArchived(record.id, false);
+      return;
+    }
+
+    if (record.type === "invoices") {
+      setInvoiceArchived(record.id, false);
+    }
+  };
+
+  const getPermanentDeleteBlockReason = (record: RecycleBinRecord) => {
+    if (
+      record.type === "invoices" ||
+      record.type === "jobCards" ||
+      record.type === "purchases" ||
+      record.type === "expenses"
+    ) {
+      return "recycleBin.delete.protectedFinancial";
+    }
+
+    if (record.type === "customers") {
+      const customer = customers.find((item) => item.id === record.id);
+      const hasLinkedVehicles = vehicles.some(
+        (vehicle) => vehicle.customerId === record.id,
+      );
+      const hasLinkedJobCards = jobCards.some(
+        (jobCard) => jobCard.customerId === record.id,
+      );
+      const hasLinkedInvoices = customer
+        ? invoices.some((invoice) => invoice.customerName === customer.name)
+        : false;
+
+      return hasLinkedVehicles || hasLinkedJobCards || hasLinkedInvoices
+        ? "recycleBin.delete.customerLinked"
+        : null;
+    }
+
+    if (record.type === "vehicles") {
+      const vehicle = vehicles.find((item) => item.id === record.id);
+      const hasLinkedJobCards = jobCards.some(
+        (jobCard) => jobCard.vehicleId === record.id,
+      );
+      const hasLinkedInvoices = vehicle
+        ? invoices.some((invoice) => invoice.plateNumber === vehicle.plateNumber)
+        : false;
+
+      return hasLinkedJobCards || hasLinkedInvoices
+        ? "recycleBin.delete.vehicleLinked"
+        : null;
+    }
+
+    if (record.type === "inventory") {
+      const hasJobUsage = jobCards.some((jobCard) =>
+        [...jobCard.partsUsed, ...jobCard.deductedParts].some(
+          (part) => part.inventoryItemId === record.id,
+        ),
+      );
+      const hasPurchaseHistory = purchases.some((purchase) =>
+        purchase.items.some((item) => item.inventoryItemId === record.id),
+      );
+
+      return hasJobUsage || hasPurchaseHistory
+        ? "recycleBin.delete.inventoryLinked"
+        : null;
+    }
+
+    return null;
+  };
+
+  const openPermanentDeleteModal = (record: RecycleBinRecord) => {
+    if (getPermanentDeleteBlockReason(record)) {
+      return;
+    }
+
+    setPendingPermanentDelete({
+      id: record.id,
+      type: record.type,
+      title: record.title,
+    });
+    setPermanentDeleteConfirmation("");
+    setOwnerDeleteCodeInput("");
+  };
+
+  const closePermanentDeleteModal = () => {
+    setPendingPermanentDelete(null);
+    setPermanentDeleteConfirmation("");
+    setOwnerDeleteCodeInput("");
+  };
+
+  const confirmPermanentDelete = () => {
+    if (
+      !pendingPermanentDelete ||
+      permanentDeleteConfirmation !== "DELETE" ||
+      ownerDeleteCodeInput !== OWNER_DELETE_CODE
+    ) {
+      return;
+    }
+
+    if (pendingPermanentDelete.type === "customers") {
+      setCustomers((currentCustomers) =>
+        currentCustomers.filter((customer) => customer.id !== pendingPermanentDelete.id),
+      );
+    }
+
+    if (pendingPermanentDelete.type === "vehicles") {
+      setVehicles((currentVehicles) =>
+        currentVehicles.filter((vehicle) => vehicle.id !== pendingPermanentDelete.id),
+      );
+    }
+
+    if (pendingPermanentDelete.type === "inventory") {
+      setInventoryItems((currentItems) =>
+        currentItems.filter((item) => item.id !== pendingPermanentDelete.id),
+      );
+    }
+
+    showToast("toast.recordPermanentlyDeleted");
+    closePermanentDeleteModal();
   };
 
   const saveSettings = (event: FormEvent<HTMLFormElement>) => {
@@ -3336,32 +3861,73 @@ export default function Home() {
     expenses: { title: "expenses.title", subtitle: "expenses.subtitle" },
     invoices: { title: "invoices.title", subtitle: "invoices.subtitle" },
     reports: { title: "reports.title", subtitle: "reports.subtitle" },
+    recycleBin: { title: "recycleBin.title", subtitle: "recycleBin.subtitle" },
     settings: { title: "settings.title", subtitle: "settings.subtitle" },
   };
 
   const topbarTitleKey = sectionHeaderKeys[activeSection].title;
   const topbarSubtitleKey = sectionHeaderKeys[activeSection].subtitle;
+  const isVehicleModalOpenFromJobCard =
+    isVehicleModalOpen && vehicleModalSource === "jobCard";
+  const printInvoice = printInvoiceId
+    ? invoices.find((invoice) => invoice.id === printInvoiceId)
+    : undefined;
+  const printCurrentInvoice = () => {
+    if (!printInvoice) {
+      return;
+    }
+
+    setIsPrintRendering(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.print();
+      });
+    });
+  };
 
   return !isLanguageReady || !isAppHydrated ? (
     <LoadingScreen />
+  ) : isPrintRendering && printInvoice ? (
+    <main dir={dir} className="invoice-print-only bg-white text-slate-950">
+      <PrintInvoiceModal
+        formatDate={formatDate}
+        formatPhone={formatPhone}
+        formatMoney={formatMoney}
+        invoice={printInvoice}
+        isPrintRendering={isPrintRendering}
+        onClose={() => {
+          setIsPrintRendering(false);
+          setPrintInvoiceId(null);
+        }}
+        onPrint={printCurrentInvoice}
+        settings={settings}
+        t={t}
+      />
+    </main>
   ) : (
-    <main dir={dir} className="min-h-screen bg-slate-100 text-slate-950">
-      <div className="app-shell flex min-h-screen">
-        <aside className="hidden w-72 shrink-0 border-s border-slate-200 bg-white px-4 py-5 shadow-sm md:flex md:flex-col">
-          <div className="mb-8 flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-lg bg-emerald-700 text-sm font-bold text-white">
-              {settings.logoInitials}
+    <main dir={dir} className="h-screen overflow-hidden bg-slate-100 text-slate-950">
+      <div className="app-shell flex h-screen overflow-hidden bg-slate-100">
+        <aside className="hidden h-screen w-72 shrink-0 border-e border-slate-200 bg-slate-50 px-4 py-5 shadow-lg shadow-slate-200/50 md:fixed md:inset-y-0 md:start-0 md:z-30 md:flex md:flex-col">
+          <div className="mb-7 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-emerald-700 text-sm font-bold text-white shadow-sm shadow-emerald-950/20">
+                {settings.logoInitials}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-base font-semibold text-slate-950">
+                  {settings.workshopName}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-slate-500">
+                  {workshopSubtitle}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-base font-semibold">{settings.workshopName}</p>
-              <p className="text-xs text-slate-500">{workshopSubtitle}</p>
-              <p className="mt-0.5 text-xs font-medium text-slate-600" dir="ltr">
-                {formatPhone(settings.phoneNumber)}
-              </p>
-            </div>
+            <p className="mt-3 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600" dir="ltr">
+              {formatPhone(settings.phoneNumber)}
+            </p>
           </div>
 
-          <nav className="flex flex-1 flex-col gap-1">
+          <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto pe-1">
             {navigationItems.map((item) => (
               <NavigationButton
                 key={item.key}
@@ -3371,10 +3937,19 @@ export default function Home() {
               />
             ))}
           </nav>
+
+          <div className="mt-5 rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+              CAR DC9
+            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              {t("settings.demoNotice.title")}
+            </p>
+          </div>
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-4 backdrop-blur sm:px-6 lg:px-8">
+        <section className="flex h-screen min-w-0 flex-1 flex-col md:ps-72">
+          <header className="shrink-0 border-b border-slate-200 bg-white/95 px-4 py-4 shadow-sm shadow-slate-200/60 backdrop-blur sm:px-6 lg:px-8">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center justify-between gap-4">
                 <div>
@@ -3463,7 +4038,7 @@ export default function Home() {
             </nav>
           </header>
 
-          <div className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100 px-4 py-6 sm:px-6 lg:px-8">
             {activeSection === "customers" ? (
               <CustomersSection
                 customerForm={customerForm}
@@ -3532,8 +4107,13 @@ export default function Home() {
               <JobCardsSection
                 formatDate={formatDate}
                 formatMoney={formatMoney}
-                isModalOpen={isJobCardModalOpen}
+                isModalOpen={isJobCardModalOpen && !isVehicleModalOpenFromJobCard}
                 isEditing={editingJobCardId !== null}
+                isFinancialLocked={
+                  editingJobCardId
+                    ? hasActiveInvoiceForJobCard(editingJobCardId)
+                    : false
+                }
                 jobCardForm={jobCardForm}
                 jobCardSearch={jobCardSearch}
                 jobCardTab={jobCardTab}
@@ -3625,6 +4205,7 @@ export default function Home() {
                   isModalOpen={isInvoiceModalOpen}
                   onArchivedChange={setInvoiceArchived}
                   onCloseModal={closeInvoiceModal}
+                  onCorrectInvoice={openInvoiceCorrectionModal}
                   onOpenModal={openInvoiceModal}
                   onPrintInvoice={(invoice) => setPrintInvoiceId(invoice.id)}
                   onSave={saveInvoice}
@@ -3657,6 +4238,18 @@ export default function Home() {
                 uninvoicedCompletedJobs={reportUninvoicedCompletedJobs}
                 uninvoicedCompletedWorkValue={reportUninvoicedCompletedWorkValue}
               />
+            ) : activeSection === "recycleBin" ? (
+              <RecycleBinSection
+                activeFilter={recycleBinFilter}
+                getDeleteBlockReason={getPermanentDeleteBlockReason}
+                onDelete={openPermanentDeleteModal}
+                onFilterChange={setRecycleBinFilter}
+                onRestore={restoreRecycleBinRecord}
+                onSearchChange={setRecycleBinSearch}
+                records={filteredRecycleBinRecords}
+                searchValue={recycleBinSearch}
+                t={t}
+              />
             ) : activeSection === "settings" ? (
               <SettingsSection
                 onResetDemoData={resetDemoData}
@@ -3688,8 +4281,13 @@ export default function Home() {
           formatDate={formatDate}
           formatPhone={formatPhone}
           formatMoney={formatMoney}
-          invoice={invoices.find((invoice) => invoice.id === printInvoiceId)}
-          onClose={() => setPrintInvoiceId(null)}
+          invoice={printInvoice}
+          isPrintRendering={isPrintRendering}
+          onClose={() => {
+            setIsPrintRendering(false);
+            setPrintInvoiceId(null);
+          }}
+          onPrint={printCurrentInvoice}
           settings={settings}
           t={t}
         />
@@ -3702,6 +4300,45 @@ export default function Home() {
           onUpdateForm={setVehicleForm}
           t={t}
           vehicleForm={vehicleForm}
+        />
+      ) : null}
+      {activeSection !== "jobCards" && isJobCardModalOpen && !isVehicleModalOpenFromJobCard ? (
+        <JobCardModal
+          formatMoney={formatMoney}
+          inventoryItems={inventoryItems}
+          isEditing={editingJobCardId !== null}
+          isFinancialLocked={
+            editingJobCardId ? hasActiveInvoiceForJobCard(editingJobCardId) : false
+          }
+          jobCardForm={jobCardForm}
+          onClose={closeJobCardModal}
+          onOpenVehicleModal={openVehicleModalFromJobCard}
+          onSave={saveJobCard}
+          onUpdateForm={setJobCardForm}
+          t={t}
+          vehicles={vehicles}
+        />
+      ) : null}
+      {correctionInvoiceId ? (
+        <InvoiceCorrectionModal
+          invoice={invoices.find((invoice) => invoice.id === correctionInvoiceId)}
+          onClose={closeInvoiceCorrectionModal}
+          onConfirm={confirmInvoiceCorrection}
+          onReasonChange={setCorrectionReason}
+          reason={correctionReason}
+          t={t}
+        />
+      ) : null}
+      {pendingPermanentDelete ? (
+        <PermanentDeleteModal
+          confirmationValue={permanentDeleteConfirmation}
+          ownerDeleteCodeValue={ownerDeleteCodeInput}
+          onClose={closePermanentDeleteModal}
+          onConfirm={confirmPermanentDelete}
+          onConfirmationChange={setPermanentDeleteConfirmation}
+          onOwnerDeleteCodeChange={setOwnerDeleteCodeInput}
+          record={pendingPermanentDelete}
+          t={t}
         />
       ) : null}
       {toastMessage ? (
@@ -3744,18 +4381,18 @@ function NavigationButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition ${
+      className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-start text-sm font-medium transition ${
         isActive
-          ? "bg-emerald-50 text-emerald-800"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+          ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+          : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm"
       }`}
     >
       <span
-        className={`size-2 rounded-full ${
+        className={`size-2 shrink-0 rounded-full ${
           isActive ? "bg-emerald-700" : "bg-slate-300"
         }`}
       />
-      <span>{label}</span>
+      <span className="truncate">{label}</span>
     </button>
   );
 }
@@ -4768,6 +5405,7 @@ function JobCardsSection({
   formatMoney,
   inventoryItems,
   isEditing,
+  isFinancialLocked,
   isModalOpen,
   jobCardForm,
   jobCardSearch,
@@ -4788,6 +5426,7 @@ function JobCardsSection({
   formatMoney: (value: number) => string;
   inventoryItems: InventoryItem[];
   isEditing: boolean;
+  isFinancialLocked: boolean;
   isModalOpen: boolean;
   jobCardForm: JobCardForm;
   jobCardSearch: string;
@@ -4964,6 +5603,7 @@ function JobCardsSection({
           formatMoney={formatMoney}
           inventoryItems={inventoryItems}
           isEditing={isEditing}
+          isFinancialLocked={isFinancialLocked}
           jobCardForm={jobCardForm}
           onClose={onCloseModal}
           onOpenVehicleModal={onOpenVehicleModal}
@@ -4981,6 +5621,7 @@ function JobCardModal({
   formatMoney,
   inventoryItems,
   isEditing,
+  isFinancialLocked,
   jobCardForm,
   onClose,
   onOpenVehicleModal,
@@ -4992,6 +5633,7 @@ function JobCardModal({
   formatMoney: (value: number) => string;
   inventoryItems: InventoryItem[];
   isEditing: boolean;
+  isFinancialLocked: boolean;
   jobCardForm: JobCardForm;
   onClose: () => void;
   onOpenVehicleModal: () => void;
@@ -5138,6 +5780,11 @@ function JobCardModal({
               <p className="mt-1 text-sm text-slate-500">
                 {t(isEditing ? "jobCards.form.editSubtitle" : "jobCards.form.subtitle")}
               </p>
+              {isFinancialLocked ? (
+                <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                  {t("toast.invoicedJobCardLocked")}
+                </p>
+              ) : null}
             </div>
             <button
               type="button"
@@ -5181,6 +5828,7 @@ function JobCardModal({
                       status: event.target.value as JobCardStatus,
                     })
                   }
+                  disabled={isFinancialLocked}
                   className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
                 >
                   <option value="inWorkshop">{t("vehicles.status.inWorkshop")}</option>
@@ -5197,6 +5845,7 @@ function JobCardModal({
                   <button
                     type="button"
                     onClick={onOpenVehicleModal}
+                    disabled={isFinancialLocked}
                     className="h-8 rounded-md border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50"
                   >
                     {t("jobCards.form.addNewVehicle")}
@@ -5208,7 +5857,8 @@ function JobCardModal({
                     onUpdateForm({ ...jobCardForm, vehicleId: event.target.value })
                   }
                   required
-                  className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
+                  disabled={isFinancialLocked}
+                  className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                 >
                   <option value="">{t("jobCards.form.vehiclePlaceholder")}</option>
                   {vehicles.map((vehicle) => (
@@ -5265,6 +5915,7 @@ function JobCardModal({
                 onChange={(value) => onUpdateForm({ ...jobCardForm, laborCost: value })}
                 placeholder={t("jobCards.form.laborCostPlaceholder")}
                 error={laborCostErrorKey ? t(laborCostErrorKey) : undefined}
+                disabled={isFinancialLocked}
                 required
               />
 
@@ -5310,6 +5961,7 @@ function JobCardModal({
                   <button
                     type="button"
                     onClick={addPartLine}
+                    disabled={isFinancialLocked}
                     className="h-9 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
                   >
                     {t("jobCards.parts.addPart")}
@@ -5395,7 +6047,8 @@ function JobCardModal({
                                         : "0",
                                     });
                                   }}
-                                  className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600"
+                                  disabled={isFinancialLocked}
+                                  className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                                 >
                                   <option value="">
                                     {t("jobCards.parts.selectItem")}
@@ -5456,8 +6109,9 @@ function JobCardModal({
                                   })
                                 }
                                 placeholder={t("jobCards.parts.quantityPlaceholder")}
+                                disabled={isFinancialLocked}
                                 aria-invalid={Boolean(quantityErrorKey)}
-                                className={`mt-1 h-10 w-full rounded-md border bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 ${
+                                className={`mt-1 h-10 w-full rounded-md border bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 ${
                                   quantityErrorKey ? "border-rose-300" : "border-slate-200"
                                 }`}
                               />
@@ -5482,8 +6136,9 @@ function JobCardModal({
                                   })
                                 }
                                 placeholder={t("jobCards.parts.pricePlaceholder")}
+                                disabled={isFinancialLocked}
                                 aria-invalid={Boolean(unitPriceErrorKey)}
-                                className={`mt-1 h-10 w-full rounded-md border bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 ${
+                                className={`mt-1 h-10 w-full rounded-md border bg-white px-3 text-center text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 ${
                                   unitPriceErrorKey ? "border-rose-300" : "border-slate-200"
                                 }`}
                               />
@@ -5506,7 +6161,8 @@ function JobCardModal({
                               <button
                                 type="button"
                                 onClick={() => removePartLine(partLine.rowId)}
-                                className="h-9 shrink-0 rounded-md border border-rose-200 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                                disabled={isFinancialLocked}
+                                className="h-9 shrink-0 rounded-md border border-rose-200 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
                               >
                                 {t("common.remove")}
                               </button>
@@ -5542,6 +6198,7 @@ function JobCardModal({
                       <button
                         type="button"
                         onClick={addPartLine}
+                        disabled={isFinancialLocked}
                         className="mt-4 h-9 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
                       >
                         {t("jobCards.parts.addPart")}
@@ -5667,6 +6324,7 @@ function InvoicesSection({
   isModalOpen,
   onArchivedChange,
   onCloseModal,
+  onCorrectInvoice,
   onOpenModal,
   onPrintInvoice,
   onSave,
@@ -5692,6 +6350,7 @@ function InvoicesSection({
   isModalOpen: boolean;
   onArchivedChange: (invoiceId: number, archived: boolean) => void;
   onCloseModal: () => void;
+  onCorrectInvoice: (invoice: Invoice) => void;
   onOpenModal: (invoice?: Invoice) => void;
   onPrintInvoice: (invoice: Invoice) => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
@@ -5765,6 +6424,11 @@ function InvoicesSection({
                 <button type="button" onClick={() => onPrintInvoice(invoice)} className="h-10 rounded-md border border-emerald-200 px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50">
                   {t("invoices.printButton")}
                 </button>
+                {!invoice.archived ? (
+                  <button type="button" onClick={() => onCorrectInvoice(invoice)} className="h-10 rounded-md border border-sky-200 px-3 text-sm font-semibold text-sky-700 transition hover:bg-sky-50">
+                    {t("invoices.correctButton")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => onArchivedChange(invoice.id, !invoice.archived)}
@@ -5773,6 +6437,12 @@ function InvoicesSection({
                   {t(invoice.archived ? "common.restore" : "common.archive")}
                 </button>
               </div>
+              {invoice.correctionStatus ? (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <p className="font-semibold">{t("invoices.correctedLabel")}</p>
+                  <p className="mt-1">{invoice.correctionReason || t("common.notAvailable")}</p>
+                </div>
+              ) : null}
             </article>
           ))}
         </section>
@@ -5798,6 +6468,86 @@ function InvoicesSection({
         />
       ) : null}
     </>
+  );
+}
+
+function InvoiceCorrectionModal({
+  invoice,
+  onClose,
+  onConfirm,
+  onReasonChange,
+  reason,
+  t,
+}: {
+  invoice?: Invoice;
+  onClose: () => void;
+  onConfirm: () => void;
+  onReasonChange: (value: string) => void;
+  reason: string;
+  t: (key: string) => string;
+}) {
+  if (!invoice) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
+      <section className="w-full max-w-lg rounded-lg bg-white shadow-xl">
+        <div className="border-b border-slate-100 p-5">
+          <h2 className="text-xl font-semibold tracking-normal text-slate-950">
+            {t("invoices.correction.title")}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            {t("invoices.correction.warning")}
+          </p>
+        </div>
+
+        <div className="grid gap-4 p-5">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <CustomerField
+              label={t("invoices.fields.invoiceNumber")}
+              value={invoice.invoiceNumber}
+            />
+            <div className="mt-3">
+              <CustomerField
+                label={t("invoices.fields.jobCardNumber")}
+                value={invoice.jobCardNumber}
+              />
+            </div>
+          </div>
+
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">
+              {t("invoices.correction.reasonLabel")}
+            </span>
+            <textarea
+              value={reason}
+              onChange={(event) => onReasonChange(event.target.value)}
+              placeholder={t("invoices.correction.reasonPlaceholder")}
+              rows={4}
+              className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-200 p-5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            {t("invoices.form.cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800"
+          >
+            {t("invoices.correction.confirm")}
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -5871,6 +6621,10 @@ function InvoiceModal({
   const updateInvoiceTotalInput = (
     nextValues: Partial<Pick<InvoiceForm, "discount" | "taxPercentage">>,
   ) => {
+    if (isEditing) {
+      return;
+    }
+
     const nextDiscountValue = parseSafeNumber(
       nextValues.discount ?? invoiceForm.discount,
     );
@@ -5962,6 +6716,11 @@ function InvoiceModal({
             <div>
               <h2 className="text-xl font-semibold tracking-normal">{t(isEditing ? "invoices.form.editTitle" : "invoices.form.title")}</h2>
               <p className="mt-1 text-sm text-slate-500">{t("invoices.form.subtitle")}</p>
+              {isEditing ? (
+                <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                  {t("toast.invoiceTotalsLocked")}
+                </p>
+              ) : null}
             </div>
             <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">{t("invoices.form.close")}</button>
           </div>
@@ -5998,8 +6757,8 @@ function InvoiceModal({
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField inputType="date" label={t("invoices.fields.invoiceDate")} value={invoiceForm.invoiceDate} onChange={(value) => onUpdateForm({ ...invoiceForm, invoiceDate: value })} placeholder={t("invoices.form.invoiceDatePlaceholder")} required />
               <FormField inputType="date" label={t("invoices.fields.dueDate")} value={invoiceForm.dueDate} onChange={(value) => onUpdateForm({ ...invoiceForm, dueDate: value })} placeholder={t("invoices.form.dueDatePlaceholder")} required />
-              <FormField inputType="number" label={t("invoices.fields.discount")} min="0" value={invoiceForm.discount} onChange={(value) => updateInvoiceTotalInput({ discount: value })} placeholder={t("invoices.form.discountPlaceholder")} error={discountErrorKey ? t(discountErrorKey) : undefined} />
-              <PercentField label={t("invoices.fields.taxPercentage")} value={invoiceForm.taxPercentage} onChange={(value) => updateInvoiceTotalInput({ taxPercentage: value })} placeholder={t("invoices.form.taxPercentagePlaceholder")} error={taxPercentageErrorKey ? t(taxPercentageErrorKey) : undefined} />
+              <FormField inputType="number" label={t("invoices.fields.discount")} min="0" value={invoiceForm.discount} onChange={(value) => updateInvoiceTotalInput({ discount: value })} placeholder={t("invoices.form.discountPlaceholder")} error={discountErrorKey ? t(discountErrorKey) : undefined} disabled={isEditing} />
+              <PercentField label={t("invoices.fields.taxPercentage")} value={invoiceForm.taxPercentage} onChange={(value) => updateInvoiceTotalInput({ taxPercentage: value })} placeholder={t("invoices.form.taxPercentagePlaceholder")} error={taxPercentageErrorKey ? t(taxPercentageErrorKey) : undefined} disabled={isEditing} />
               <FormField inputType="number" label={t("invoices.fields.paidAmount")} min="0" value={invoiceForm.paidAmount} onChange={updateInvoicePaidAmount} placeholder={t("invoices.form.paidPlaceholder")} error={invoicePaidAmountErrorKey ? t(invoicePaidAmountErrorKey) : undefined} />
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">{t("invoices.fields.paymentStatus")}</span>
@@ -6076,7 +6835,9 @@ function PrintInvoiceModal({
   formatPhone,
   formatMoney,
   invoice,
+  isPrintRendering = false,
   onClose,
+  onPrint,
   settings,
   t,
 }: {
@@ -6084,7 +6845,9 @@ function PrintInvoiceModal({
   formatPhone: (value: string) => string;
   formatMoney: (value: number) => string;
   invoice?: Invoice;
+  isPrintRendering?: boolean;
   onClose: () => void;
+  onPrint: () => void;
   settings: WorkshopSettings;
   t: (key: string) => string;
 }) {
@@ -6093,21 +6856,45 @@ function PrintInvoiceModal({
   }
 
   return (
-    <div className="invoice-print-backdrop fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/50 px-4 py-4">
-      <div className="invoice-print-shell flex max-h-[94vh] w-full flex-col overflow-hidden rounded-lg bg-slate-100 shadow-2xl sm:max-w-6xl print:max-h-none print:overflow-visible print:rounded-none print:bg-white print:shadow-none">
-        <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-3 print:hidden">
+    <div
+      className={
+        isPrintRendering
+          ? "invoice-print-backdrop bg-white"
+          : "invoice-print-backdrop fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/50 px-4 py-4"
+      }
+    >
+      <div
+        className={
+          isPrintRendering
+            ? "invoice-print-shell bg-white"
+            : "invoice-print-shell flex max-h-[94vh] w-full flex-col overflow-hidden rounded-lg bg-slate-100 shadow-2xl sm:max-w-6xl print:max-h-none print:overflow-visible print:rounded-none print:bg-white print:shadow-none"
+        }
+      >
+        <div className={`shrink-0 border-b border-slate-200 bg-white px-5 py-3 print:hidden ${isPrintRendering ? "hidden" : ""}`}>
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
               {t("invoices.printButton")}
             </p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => window.print()} className="h-9 rounded bg-slate-900 px-5 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-slate-700">{t("invoices.printNow")}</button>
+              <button type="button" onClick={onPrint} className="h-9 rounded bg-slate-900 px-5 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-slate-700">{t("invoices.printNow")}</button>
               <button type="button" onClick={onClose} className="h-9 rounded border border-slate-200 px-5 text-xs font-bold uppercase tracking-wider text-slate-600 transition hover:bg-slate-50">{t("invoices.form.close")}</button>
             </div>
           </div>
         </div>
-        <div className="invoice-print-page max-h-[84vh] flex-1 overflow-y-auto p-5 sm:p-8 print:max-h-none print:overflow-visible print:p-0">
-          <section className="invoice-sheet mx-auto w-full max-w-[900px] bg-white p-10 shadow-md ring-1 ring-slate-200 sm:p-12 print:min-h-0 print:max-w-none print:p-0 print:shadow-none print:ring-0">
+        <div
+          className={
+            isPrintRendering
+              ? "invoice-print-page"
+              : "invoice-print-page max-h-[84vh] flex-1 overflow-y-auto p-5 sm:p-8 print:max-h-none print:overflow-visible print:p-0"
+          }
+        >
+          <section
+            className={
+              isPrintRendering
+                ? "invoice-sheet mx-auto w-full bg-white"
+                : "invoice-sheet mx-auto w-full max-w-[900px] bg-white p-10 shadow-md ring-1 ring-slate-200 sm:p-12 print:min-h-0 print:max-w-none print:p-0 print:shadow-none print:ring-0"
+            }
+          >
             <div className="invoice-header flex flex-col gap-6 pb-6 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <h2 className="text-[34px] font-black leading-none tracking-tight text-slate-950">{settings.workshopName}</h2>
@@ -6453,6 +7240,252 @@ function SettingsToggle({
         className="size-5 rounded border-slate-300 text-emerald-700 accent-emerald-700"
       />
     </label>
+  );
+}
+
+function RecycleBinSection({
+  activeFilter,
+  getDeleteBlockReason,
+  onDelete,
+  onFilterChange,
+  onRestore,
+  onSearchChange,
+  records,
+  searchValue,
+  t,
+}: {
+  activeFilter: RecycleBinFilter;
+  getDeleteBlockReason: (record: RecycleBinRecord) => string | null;
+  onDelete: (record: RecycleBinRecord) => void;
+  onFilterChange: (value: RecycleBinFilter) => void;
+  onRestore: (record: RecycleBinRecord) => void;
+  onSearchChange: (value: string) => void;
+  records: RecycleBinRecord[];
+  searchValue: string;
+  t: (key: string) => string;
+}) {
+  return (
+    <>
+      <section className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-medium text-emerald-700">
+            {t("recycleBin.recordCount").replace("{count}", String(records.length))}
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-normal">
+            {t("recycleBin.title")}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            {t("recycleBin.subtitle")}
+          </p>
+        </div>
+      </section>
+
+      <section className="mb-4 grid gap-3">
+        <label className="sr-only" htmlFor="recycle-bin-search">
+          {t("recycleBin.searchLabel")}
+        </label>
+        <input
+          id="recycle-bin-search"
+          type="search"
+          value={searchValue}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder={t("recycleBin.searchPlaceholder")}
+          className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+        />
+
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {recycleBinFilters.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => onFilterChange(filter)}
+              className={`h-10 shrink-0 rounded-md border px-3 text-sm font-semibold transition ${
+                activeFilter === filter
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+              aria-pressed={activeFilter === filter}
+            >
+              {t(`recycleBin.filters.${filter}`)}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {records.length > 0 ? (
+        <section className="grid gap-4 xl:grid-cols-2">
+          {records.map((record) => {
+            const blockReason = getDeleteBlockReason(record);
+            const isProtected = Boolean(blockReason);
+
+            return (
+              <article
+                key={`${record.type}-${record.id}`}
+                className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                      {t(`recycleBin.types.${record.type}`)}
+                    </span>
+                    <h3 className="mt-3 text-xl font-semibold tracking-normal text-slate-950">
+                      {record.title}
+                    </h3>
+                    <p className="mt-1 text-sm font-medium text-slate-600">
+                      {record.subtitle}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      {record.details}
+                    </p>
+                  </div>
+                  <span className="w-fit shrink-0 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+                    {record.status ?? t("common.archived")}
+                  </span>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-bold ${
+                      isProtected
+                        ? "bg-slate-100 text-slate-600"
+                        : "bg-emerald-50 text-emerald-700"
+                    }`}
+                  >
+                    {t(
+                      isProtected
+                        ? "recycleBin.delete.protectedStatus"
+                        : "recycleBin.delete.safeToDeleteStatus",
+                    )}
+                  </span>
+                </div>
+
+                <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => onRestore(record)}
+                    className="h-10 rounded-md border border-emerald-200 px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                  >
+                    {t("common.restore")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(record)}
+                    disabled={Boolean(blockReason)}
+                    className="h-10 rounded-md border border-rose-200 px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 disabled:hover:bg-transparent"
+                  >
+                    {t("recycleBin.delete.button")}
+                  </button>
+                </div>
+                {blockReason ? (
+                  <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">
+                    {t(blockReason)}
+                  </p>
+                ) : (
+                  <p className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+                    {t("recycleBin.delete.allowedHelper")}
+                  </p>
+                )}
+              </article>
+            );
+          })}
+        </section>
+      ) : (
+        <section className="rounded-lg border border-dashed border-slate-300 bg-white px-5 py-12 text-center shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-950">
+            {t("recycleBin.emptyTitle")}
+          </h3>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+            {t("recycleBin.emptyBody")}
+          </p>
+        </section>
+      )}
+    </>
+  );
+}
+
+function PermanentDeleteModal({
+  confirmationValue,
+  ownerDeleteCodeValue,
+  onClose,
+  onConfirm,
+  onConfirmationChange,
+  onOwnerDeleteCodeChange,
+  record,
+  t,
+}: {
+  confirmationValue: string;
+  ownerDeleteCodeValue: string;
+  onClose: () => void;
+  onConfirm: () => void;
+  onConfirmationChange: (value: string) => void;
+  onOwnerDeleteCodeChange: (value: string) => void;
+  record: PendingPermanentDelete;
+  t: (key: string) => string;
+}) {
+  const canConfirm =
+    confirmationValue === "DELETE" && ownerDeleteCodeValue === OWNER_DELETE_CODE;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
+      <section className="w-full max-w-lg rounded-lg bg-white shadow-xl">
+        <div className="border-b border-slate-100 p-5">
+          <h2 className="text-xl font-semibold tracking-normal text-slate-950">
+            {t("recycleBin.delete.modalTitle")}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            {t("recycleBin.delete.modalBody").replace("{name}", record.title)}
+          </p>
+        </div>
+        <div className="p-5">
+          <div className="grid gap-4">
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">
+                {t("recycleBin.delete.confirmLabel")}
+              </span>
+              <input
+                type="text"
+                value={confirmationValue}
+                onChange={(event) => onConfirmationChange(event.target.value)}
+                placeholder="DELETE"
+                className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">
+                {t("recycleBin.delete.ownerCodeLabel")}
+              </span>
+              <input
+                type="password"
+                value={ownerDeleteCodeValue}
+                onChange={(event) => onOwnerDeleteCodeChange(event.target.value)}
+                placeholder={t("recycleBin.delete.ownerCodePlaceholder")}
+                className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600"
+              />
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                {t("recycleBin.delete.ownerCodeHelper")}
+              </p>
+            </label>
+          </div>
+        </div>
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-200 p-5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            {t("invoices.form.cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!canConfirm}
+            className="h-11 rounded-md bg-rose-700 px-4 text-sm font-semibold text-white transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {t("recycleBin.delete.confirmButton")}
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -8102,6 +9135,7 @@ function RecordTabs({
 }
 
 function FormField({
+  disabled,
   error,
   inputType = "text",
   label,
@@ -8111,6 +9145,7 @@ function FormField({
   required,
   value,
 }: {
+  disabled?: boolean;
   error?: string;
   inputType?: string;
   label: string;
@@ -8130,9 +9165,10 @@ function FormField({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         required={required}
+        disabled={disabled}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${label.replace(/\s+/g, "-")}-error` : undefined}
-        className={`mt-1 h-11 w-full rounded-md border bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 ${
+        className={`mt-1 h-11 w-full rounded-md border bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 ${
           error ? "border-rose-300" : "border-slate-200"
         }`}
       />
@@ -8187,12 +9223,14 @@ function PhoneField({
 }
 
 function PercentField({
+  disabled,
   error,
   label,
   onChange,
   placeholder,
   value,
 }: {
+  disabled?: boolean;
   error?: string;
   label: string;
   onChange: (value: string) => void;
@@ -8211,8 +9249,9 @@ function PercentField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
+          disabled={disabled}
           aria-invalid={Boolean(error)}
-          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm outline-none placeholder:text-slate-400"
+          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
         />
         <span className="flex w-12 shrink-0 items-center justify-center border-s border-slate-200 bg-slate-50 text-sm font-bold text-slate-600">
           %

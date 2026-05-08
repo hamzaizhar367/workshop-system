@@ -23,6 +23,16 @@ body {
 }
 
 @media print {
+  body.invoice-printing *,
+  body.invoice-printing *::before,
+  body.invoice-printing *::after {
+    animation: none !important;
+    transition: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    text-shadow: none !important;
+  }
+
   html,
   body {
     background: #ffffff;
@@ -37,8 +47,13 @@ body {
   }
 
   body.invoice-printing .app-shell,
-  body.invoice-printing .fixed.inset-x-4.bottom-4 {
+  body.invoice-printing .fixed.inset-x-4.bottom-4,
+  body.invoice-printing main > :not(.invoice-print-backdrop) {
     display: none !important;
+  }
+
+  body.invoice-printing .sticky {
+    position: static !important;
   }
 
   .invoice-print-backdrop,
