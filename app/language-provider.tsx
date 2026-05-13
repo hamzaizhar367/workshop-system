@@ -11,6 +11,7 @@ import {
 } from "react";
 import arMessages from "@/messages/ar.json";
 import enMessages from "@/messages/en.json";
+import { workshopDataService } from "./workshop-data-service";
 
 type Messages = typeof arMessages;
 type Locale = "ar" | "en";
@@ -45,23 +46,13 @@ function getMessage(messages: Messages, key: string) {
   }, messages);
 }
 
-const demoDataStorageKey = "car-dc9-demo-data-v1";
-
 function getStoredLocale() {
-  if (typeof window === "undefined") {
-    return "en";
-  }
+  const storedData = workshopDataService.loadAppData<{
+    settings?: { defaultLanguage?: Locale };
+  }>({});
+  const storedLocale = storedData.settings?.defaultLanguage;
 
-  try {
-    const storedData = JSON.parse(
-      window.localStorage.getItem(demoDataStorageKey) ?? "{}",
-    ) as { settings?: { defaultLanguage?: Locale } };
-    const storedLocale = storedData.settings?.defaultLanguage;
-
-    return storedLocale === "en" || storedLocale === "ar" ? storedLocale : "en";
-  } catch {
-    return "en";
-  }
+  return storedLocale === "en" || storedLocale === "ar" ? storedLocale : "en";
 }
 
 const subscribeToHydration = () => () => {};

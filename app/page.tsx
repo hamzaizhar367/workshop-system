@@ -10,6 +10,7 @@ import {
   type SetStateAction,
 } from "react";
 import { useLanguage } from "./language-provider";
+import { workshopDataService } from "./workshop-data-service";
 
 type SectionKey =
   | "dashboard"
@@ -1027,9 +1028,6 @@ const emptyInvoiceForm: InvoiceForm = {
   notes: "",
 };
 
-const demoDataStorageKey = "car-dc9-demo-data-v1";
-const activeSectionSessionStorageKey = "car-dc9-active-section-v1";
-
 type DemoPersistedData = {
   customers: Customer[];
   vehicles: Vehicle[];
@@ -1041,8 +1039,7 @@ type DemoPersistedData = {
   settings: WorkshopSettings;
 };
 
-const isBrowser = () => typeof window !== "undefined";
-const createRecordId = () => Date.now();
+const createRecordId = workshopDataService.createRecordId;
 const OWNER_DELETE_CODE = "DC9-OWNER-2026";
 const subscribeToHydration = () => () => {};
 const getHydratedSnapshot = () => true;
@@ -1058,70 +1055,6 @@ const getDefaultDemoData = (): DemoPersistedData => ({
   invoices: [],
   settings: defaultWorkshopSettings,
 });
-
-const safeParseJson = <T,>(value: string | null, fallback: T): T => {
-  if (!value) {
-    return fallback;
-  }
-
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
-};
-
-const safeLocalStorageGet = <T,>(key: string, fallback: T): T => {
-  if (!isBrowser()) {
-    return fallback;
-  }
-
-  return safeParseJson(window.localStorage.getItem(key), fallback);
-};
-
-const safeLocalStorageSet = (key: string, value: unknown) => {
-  if (!isBrowser()) {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Demo persistence should never block core workshop flows.
-  }
-};
-
-const safeLocalStorageRemove = (key: string) => {
-  if (!isBrowser()) {
-    return;
-  }
-
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    // Ignore storage failures in demo mode.
-  }
-};
-
-const safeSessionStorageGet = <T,>(key: string, fallback: T): T => {
-  if (!isBrowser()) {
-    return fallback;
-  }
-
-  return safeParseJson(window.sessionStorage.getItem(key), fallback);
-};
-
-const safeSessionStorageSet = (key: string, value: unknown) => {
-  if (!isBrowser()) {
-    return;
-  }
-
-  try {
-    window.sessionStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Session navigation persistence should never block the app.
-  }
-};
 
 const isSectionKey = (value: string): value is SectionKey =>
   navigationItems.some((item) => item.key === value);
@@ -1375,10 +1308,7 @@ const getSyncedPersistedPayment = (
 
 const loadAppData = () => {
   const fallback = getDefaultDemoData();
-  const storedData = safeLocalStorageGet<Partial<DemoPersistedData>>(
-    demoDataStorageKey,
-    fallback,
-  );
+  const storedData = workshopDataService.loadAppData<DemoPersistedData>(fallback);
 
   return {
     customers: (Array.isArray(storedData.customers) ? storedData.customers : fallback.customers)
@@ -1482,7 +1412,7 @@ const loadAppData = () => {
 };
 
 const saveAppData = (data: DemoPersistedData) => {
-  safeLocalStorageSet(demoDataStorageKey, data);
+  workshopDataService.saveAppData(data);
 };
 
 export default function Home() {
@@ -1495,10 +1425,7 @@ export default function Home() {
   const [initialDemoData] = useState<DemoPersistedData>(loadAppData);
   const [appData, setAppData] = useState<DemoPersistedData>(initialDemoData);
   const [activeSection, setActiveSection] = useState<SectionKey>(() => {
-    const storedSection = safeSessionStorageGet<string>(
-      activeSectionSessionStorageKey,
-      "dashboard",
-    );
+    const storedSection = workshopDataService.loadActiveSection("dashboard");
 
     return isSectionKey(storedSection) ? storedSection : "dashboard";
   });
@@ -1627,7 +1554,7 @@ export default function Home() {
       return;
     }
 
-    safeSessionStorageSet(activeSectionSessionStorageKey, activeSection);
+    workshopDataService.saveActiveSection(activeSection);
   }, [activeSection, isAppHydrated]);
 
   useEffect(() => {
@@ -2487,18 +2414,62 @@ export default function Home() {
     }
 
     if (editingCustomerId) {
+      const existingCustomer = customers.find(
+        (customer) => customer.id === editingCustomerId,
+      );
+      const nextCustomerName = customerForm.name.trim();
+      const nextCustomerCity = customerForm.city.trim();
+
       setCustomers((currentCustomers) =>
         currentCustomers.map((customer) =>
           customer.id === editingCustomerId
             ? {
                 ...customer,
-                name: customerForm.name.trim(),
+                name: nextCustomerName,
                 phone: normalizedPhone,
-                city: customerForm.city.trim(),
+                city: nextCustomerCity,
                 type: customerForm.type,
                 notes: customerForm.notes.trim(),
               }
-            : customer,
+          : customer,
+        ),
+      );
+
+      setVehicles((currentVehicles) =>
+        currentVehicles.map((vehicle) =>
+          vehicle.customerId === editingCustomerId ||
+          (existingCustomer && vehicle.ownerName === existingCustomer.name)
+            ? {
+                ...vehicle,
+                customerId: editingCustomerId,
+                ownerName: nextCustomerName,
+              }
+            : vehicle,
+        ),
+      );
+      setJobCards((currentJobCards) =>
+        currentJobCards.map((jobCard) =>
+          jobCard.customerId === editingCustomerId ||
+          (existingCustomer && jobCard.customerName === existingCustomer.name)
+            ? {
+                ...jobCard,
+                customerId: editingCustomerId,
+                customerName: nextCustomerName,
+              }
+            : jobCard,
+        ),
+      );
+      setInvoices((currentInvoices) =>
+        currentInvoices.map((invoice) =>
+          invoice.customerId === editingCustomerId ||
+          (existingCustomer && invoice.customerName === existingCustomer.name)
+            ? {
+                ...invoice,
+                customerId: editingCustomerId,
+                customerName: nextCustomerName,
+                customerPhone: normalizedPhone,
+              }
+            : invoice,
         ),
       );
       closeCustomerModal();
@@ -2506,7 +2477,7 @@ export default function Home() {
     }
 
     const nextCustomer: Customer = {
-      id: Date.now(),
+      id: createRecordId(),
       name: customerForm.name.trim(),
       phone: normalizedPhone,
       city: customerForm.city.trim(),
@@ -2571,21 +2542,31 @@ export default function Home() {
 
   const saveVehicle = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const nextOwnerName = vehicleForm.ownerName.trim();
+    const matchingCustomer = customers.find(
+      (customer) => customer.name.toLowerCase() === nextOwnerName.toLowerCase(),
+    );
+    const nextCustomerId = matchingCustomer?.id ?? 0;
+    const nextVehicleLabel = `${vehicleForm.make.trim()} ${vehicleForm.model.trim()}`.trim();
+    const nextPlateNumber = vehicleForm.plateNumber.trim();
 
     if (editingVehicleId) {
+      const existingVehicle = vehicles.find((vehicle) => vehicle.id === editingVehicleId);
+      const resolvedCustomerId =
+        matchingCustomer?.id ?? existingVehicle?.customerId ?? 0;
+      const resolvedCustomerName = matchingCustomer?.name ?? nextOwnerName;
+      const resolvedCustomerPhone =
+        matchingCustomer?.phone ??
+        customers.find((customer) => customer.id === resolvedCustomerId)?.phone;
+
       setVehicles((currentVehicles) =>
         currentVehicles.map((vehicle) =>
           vehicle.id === editingVehicleId
             ? {
                 ...vehicle,
-                customerId:
-                  customers.find(
-                    (customer) =>
-                      customer.name.toLowerCase() ===
-                      vehicleForm.ownerName.trim().toLowerCase(),
-                  )?.id ?? vehicle.customerId,
-                ownerName: vehicleForm.ownerName.trim(),
-                plateNumber: vehicleForm.plateNumber.trim(),
+                customerId: resolvedCustomerId,
+                ownerName: resolvedCustomerName,
+                plateNumber: nextPlateNumber,
                 make: vehicleForm.make.trim(),
                 model: vehicleForm.model.trim(),
                 year: vehicleForm.year.trim(),
@@ -2596,19 +2577,46 @@ export default function Home() {
             : vehicle,
         ),
       );
+      setJobCards((currentJobCards) =>
+        currentJobCards.map((jobCard) =>
+          jobCard.vehicleId === editingVehicleId ||
+          (existingVehicle && jobCard.plateNumber === existingVehicle.plateNumber)
+            ? {
+                ...jobCard,
+                vehicleId: editingVehicleId,
+                customerId: resolvedCustomerId,
+                customerName: resolvedCustomerName,
+                vehicleLabel: nextVehicleLabel,
+                plateNumber: nextPlateNumber,
+              }
+            : jobCard,
+        ),
+      );
+      setInvoices((currentInvoices) =>
+        currentInvoices.map((invoice) =>
+          invoice.vehicleId === editingVehicleId ||
+          (existingVehicle && invoice.plateNumber === existingVehicle.plateNumber)
+            ? {
+                ...invoice,
+                vehicleId: editingVehicleId,
+                customerId: resolvedCustomerId,
+                customerName: resolvedCustomerName,
+                customerPhone: resolvedCustomerPhone ?? invoice.customerPhone,
+                vehicle: nextVehicleLabel || invoice.vehicle,
+                plateNumber: nextPlateNumber,
+              }
+            : invoice,
+        ),
+      );
       closeVehicleModal();
       return;
     }
 
     const nextVehicle: Vehicle = {
-      id: Date.now(),
-      customerId:
-        customers.find(
-          (customer) =>
-            customer.name.toLowerCase() === vehicleForm.ownerName.trim().toLowerCase(),
-        )?.id ?? 0,
-      ownerName: vehicleForm.ownerName.trim(),
-      plateNumber: vehicleForm.plateNumber.trim(),
+      id: createRecordId(),
+      customerId: nextCustomerId,
+      ownerName: nextOwnerName,
+      plateNumber: nextPlateNumber,
       make: vehicleForm.make.trim(),
       model: vehicleForm.model.trim(),
       year: vehicleForm.year.trim(),
@@ -3593,7 +3601,7 @@ export default function Home() {
         partsCost > 0
           ? [
               {
-                rowId: `quick-parts-${existingInvoice?.id ?? Date.now()}`,
+                rowId: `quick-parts-${existingInvoice?.id ?? "manual"}`,
                 itemName: t("invoices.form.manualPartsItem"),
                 arabicItemName: "",
                 sku: "",
@@ -4195,13 +4203,13 @@ export default function Home() {
   };
 
   const resetDemoData = () => {
-    if (isBrowser() && !window.confirm(t("settings.demoReset.confirm"))) {
+    if (workshopDataService.canUseBrowser() && !window.confirm(t("settings.demoReset.confirm"))) {
       return;
     }
 
     const defaultDemoData = getDefaultDemoData();
 
-    safeLocalStorageRemove(demoDataStorageKey);
+    workshopDataService.clearAppData();
     setAppData(defaultDemoData);
     setSettingsDraft(defaultDemoData.settings);
     setLocale(defaultDemoData.settings.defaultLanguage);
@@ -4477,8 +4485,10 @@ export default function Home() {
                 jobCardSearch={jobCardSearch}
                 jobCardTab={jobCardTab}
                 jobCards={filteredJobCards}
+                isJobCardInvoiced={hasActiveInvoiceForJobCard}
                 onArchivedChange={setJobCardArchived}
                 onCloseModal={closeJobCardModal}
+                onCreateInvoice={openInvoiceModalForJobCard}
                 onOpenModal={openJobCardModal}
                 onOpenVehicleModal={openVehicleModalFromJobCard}
                 onSave={saveJobCard}
@@ -5781,12 +5791,14 @@ function JobCardsSection({
   isEditing,
   isFinancialLocked,
   isModalOpen,
+  isJobCardInvoiced,
   jobCardForm,
   jobCardSearch,
   jobCardTab,
   jobCards,
   onArchivedChange,
   onCloseModal,
+  onCreateInvoice,
   onOpenModal,
   onOpenVehicleModal,
   onSave,
@@ -5802,12 +5814,14 @@ function JobCardsSection({
   isEditing: boolean;
   isFinancialLocked: boolean;
   isModalOpen: boolean;
+  isJobCardInvoiced: (jobCardId: number, excludeInvoiceId?: number) => boolean;
   jobCardForm: JobCardForm;
   jobCardSearch: string;
   jobCardTab: RecordTab;
   jobCards: JobCard[];
   onArchivedChange: (jobCardId: number, archived: boolean) => void;
   onCloseModal: () => void;
+  onCreateInvoice: (jobCard: JobCard) => void;
   onOpenModal: (jobCard?: JobCard) => void;
   onOpenVehicleModal: () => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
@@ -5939,6 +5953,17 @@ function JobCardsSection({
               </div>
 
               <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                {!jobCard.archived &&
+                jobCard.status === "completed" &&
+                !isJobCardInvoiced(jobCard.id) ? (
+                  <button
+                    type="button"
+                    onClick={() => onCreateInvoice(jobCard)}
+                    className="h-10 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
+                  >
+                    {t("reports.uninvoicedJobs.createInvoice")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => onOpenModal(jobCard)}
