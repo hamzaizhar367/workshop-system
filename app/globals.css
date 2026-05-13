@@ -127,6 +127,7 @@ body {
     font-size: 26px !important;
     line-height: 1 !important;
     letter-spacing: -0.02em !important;
+    overflow-wrap: anywhere !important;
   }
 
   .invoice-detail-grid {
@@ -167,6 +168,8 @@ body {
     font-size: 11.5px !important;
     line-height: 1.3 !important;
     margin-top: 2px !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
   }
 
   .invoice-work {
@@ -191,6 +194,8 @@ body {
     line-height: 1.45 !important;
     margin-top: 5px !important;
     padding-top: 5px !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
   }
 
   .invoice-parts {
@@ -216,6 +221,8 @@ body {
     padding: 8px 10px !important;
     line-height: 1.4 !important;
     font-size: 12px !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
   }
 
   .invoice-parts tr {
@@ -305,6 +312,8 @@ body {
     line-height: 1.38 !important;
     margin-top: 6px !important;
     padding-top: 6px !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
   }
 
   .invoice-signatures {

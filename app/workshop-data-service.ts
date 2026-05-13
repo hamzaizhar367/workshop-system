@@ -1,6 +1,11 @@
 const demoDataStorageKey = "car-dc9-demo-data-v1";
 const activeSectionSessionStorageKey = "car-dc9-active-section-v1";
 
+type StorageSaveResult = {
+  ok: boolean;
+  error?: "quotaExceeded" | "unavailable" | "unknown";
+};
+
 const canUseBrowserStorage = () => typeof window !== "undefined";
 
 const safeParseJson = <T,>(value: string | null, fallback: T): T => {
@@ -23,15 +28,30 @@ const readLocalValue = <T,>(key: string, fallback: T): T => {
   return safeParseJson(window.localStorage.getItem(key), fallback);
 };
 
-const writeLocalValue = (key: string, value: unknown) => {
+const getStorageErrorType = (error: unknown): StorageSaveResult["error"] => {
+  if (
+    error instanceof DOMException &&
+    (error.name === "QuotaExceededError" ||
+      error.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+      error.code === 22 ||
+      error.code === 1014)
+  ) {
+    return "quotaExceeded";
+  }
+
+  return "unknown";
+};
+
+const writeLocalValue = (key: string, value: unknown): StorageSaveResult => {
   if (!canUseBrowserStorage()) {
-    return;
+    return { ok: false, error: "unavailable" };
   }
 
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Offline persistence must not block the current in-memory workflow.
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: getStorageErrorType(error) };
   }
 };
 
@@ -70,9 +90,11 @@ const writeSessionValue = (key: string, value: unknown) => {
 export const workshopDataService = {
   canUseBrowser: canUseBrowserStorage,
   createRecordId: () => Date.now(),
+  storageKey: demoDataStorageKey,
   loadAppData: <T,>(fallback: T) =>
     readLocalValue<Partial<T>>(demoDataStorageKey, fallback as Partial<T>),
   saveAppData: <T,>(data: T) => writeLocalValue(demoDataStorageKey, data),
+  exportAppData: <T,>(data: T) => JSON.stringify(data, null, 2),
   clearAppData: () => removeLocalValue(demoDataStorageKey),
   loadActiveSection: <T extends string>(fallback: T) =>
     readSessionValue<T>(activeSectionSessionStorageKey, fallback),

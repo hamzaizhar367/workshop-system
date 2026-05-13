@@ -20,7 +20,11 @@
     "remove": "إزالة",
     "archived": "مؤرشف",
     "showArchived": "إظهار المؤرشف",
-    "notAvailable": "غير متوفر"
+    "notAvailable": "غير متوفر",
+    "previous": "السابق",
+    "next": "التالي",
+    "pageSummary": "صفحة {page} من {pages}",
+    "paginationSummary": "عرض {shown} من {total}"
   },
   "toast": {
     "recordArchived": "تمت أرشفة السجل",
@@ -44,8 +48,18 @@
     "invoiceVehicleRequired": "أدخل اللوحة والشركة والموديل للمركبة الجديدة.",
     "invoiceJobCardRequired": "اختر أمر عمل مكتمل قبل حفظ هذه الفاتورة.",
     "invoiceDatesRequired": "أدخل تاريخ الفاتورة وتاريخ الاستحقاق قبل الحفظ.",
+    "invoiceSaved": "تم حفظ الفاتورة بنجاح.",
+    "invoiceServiceOrAmountRequired": "أدخل تفاصيل الخدمة أو مبلغا واحدا على الأقل.",
+    "invoiceTotalRequired": "يجب أن يكون إجمالي الفاتورة أكبر من 0.",
+    "negativeValuesNotAllowed": "القيم السالبة غير مسموحة.",
+    "duplicateCustomerFound": "يوجد عميل مطابق بالفعل. اختر العميل الموجود قبل الحفظ.",
     "phoneInvalid": "أدخل رقم جوال سعودي صحيح مثل +966 55 765 4321.",
-    "recordPermanentlyDeleted": "تم حذف السجل نهائيا."
+    "recordPermanentlyDeleted": "تم حذف السجل نهائيا.",
+    "storageSaveFailed": "تعذر حفظ البيانات في هذا المتصفح. نزّل نسخة احتياطية قبل الإغلاق.",
+    "storageQuotaExceeded": "مساحة تخزين المتصفح ممتلئة. نزّل نسخة احتياطية وقلل بيانات التجربة القديمة.",
+    "backupDownloaded": "تم تنزيل النسخة الاحتياطية.",
+    "backupRestored": "تمت استعادة النسخة الاحتياطية بنجاح.",
+    "backupInvalid": "تعذرت استعادة ملف النسخة الاحتياطية."
   },
   "nav": {
     "dashboard": "لوحة التحكم",
@@ -524,6 +538,12 @@
     "direction": {
       "ltr": "LTR",
       "rtl": "RTL"
+    },
+    "backup": {
+      "download": "تنزيل نسخة احتياطية",
+      "import": "استيراد نسخة JSON",
+      "warning": "استيراد نسخة احتياطية سيستبدل بيانات المتصفح الحالية. نزّل نسخة احتياطية أولا إذا كنت تحتاج السجلات الحالية.",
+      "restoreConfirm": "هل تريد استعادة هذه النسخة واستبدال بيانات المتصفح الحالية؟"
     }
   },
   "invoices": {
@@ -569,18 +589,28 @@
       "subtitle": "اسحب تفاصيل الخدمة من أمر عمل مكتمل أو أنشئ فاتورة سريعة لعميل مباشر.",
       "close": "إغلاق",
       "invoiceType": "نوع الفاتورة",
-      "quickInvoiceType": "فاتورة سريعة / خدمة عميل مباشر",
+      "invoiceSource": "مصدر الفاتورة",
+      "quickInvoiceType": "فاتورة عميل مباشر سريعة",
       "jobCardInvoiceType": "من أمر عمل مكتمل",
+      "completedJobCard": "أمر عمل مكتمل",
       "jobCardPlaceholder": "اختر أمر عمل مكتمل",
       "quickSubtitle": "أنشئ فاتورة سريعة لعميل مباشر دون فتح أمر عمل.",
       "customerSection": "العميل",
+      "customerInformationSection": "معلومات العميل",
       "vehicleSection": "المركبة",
+      "vehicleInformationSection": "معلومات المركبة",
+      "serviceDetailsSection": "تفاصيل الخدمة",
+      "paymentDetailsSection": "تفاصيل الدفع",
+      "invoiceSummarySection": "ملخص الفاتورة",
       "selectCustomer": "اختر العميل",
       "selectVehicle": "اختر المركبة",
       "newCustomerOption": "إضافة عميل جديد",
       "newVehicleOption": "إضافة مركبة جديدة",
       "noVehicleOption": "بدون مركبة / عميل مباشر",
       "vehicleOptional": "تفاصيل المركبة اختيارية لخدمة العميل المباشر.",
+      "duplicateCustomerTitle": "عميل مشابه موجود",
+      "duplicateCustomerBody": "يوجد عميل باسم {name}. استخدم هذا السجل لتجنب التكرار.",
+      "useExistingCustomer": "استخدم العميل الموجود",
       "workPerformedPlaceholder": "اكتب الخدمة أو العمل المنجز",
       "partsCostPlaceholder": "أدخل تكلفة القطع/الأصناف",
       "quickInvoiceLabel": "فاتورة سريعة",

@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
   useSyncExternalStore,
+  type ChangeEvent,
   type FormEvent,
   type ReactNode,
   type SetStateAction,
@@ -1176,6 +1177,20 @@ const getFinancialInputErrorKey = (
   return parsedValue === null || parsedValue < 0 ? errorKey : null;
 };
 
+const getInvoiceMoneyInputErrorKey = (value: unknown) => {
+  if (normalizeNumberInput(value) === "") {
+    return null;
+  }
+
+  const parsedValue = parseSafeNumber(value);
+
+  if (parsedValue !== null && parsedValue < 0) {
+    return "toast.negativeValuesNotAllowed";
+  }
+
+  return parsedValue === null ? "toast.amountInvalid" : null;
+};
+
 const getPaidAmountInputErrorKey = (paid: unknown, total: number) => {
   if (normalizeNumberInput(paid) === "") {
     return null;
@@ -1264,6 +1279,9 @@ const isValidSaudiPhone = (value: string) =>
   /^(05\d{8}|01\d{8})$/.test(cleanSaudiPhoneInput(value)) ||
   /^\+\d{7,15}$/.test(cleanSaudiPhoneInput(value));
 
+const normalizeSearchName = (value: unknown) =>
+  getSafeString(value).trim().replace(/\s+/g, " ").toLowerCase();
+
 const getSafeNumber = (value: unknown, fallback = 0) =>
   typeof value === "number" && Number.isFinite(value)
     ? value
@@ -1306,9 +1324,68 @@ const getSyncedPersistedPayment = (
   };
 };
 
-const loadAppData = () => {
+type FinancialCalculationInput = {
+  invoices: Invoice[];
+  purchases: Purchase[];
+  expenses: Expense[];
+  isInRange: (date: string) => boolean;
+};
+
+const getFinancialCalculations = ({
+  expenses,
+  invoices,
+  isInRange,
+  purchases,
+}: FinancialCalculationInput) => {
+  const scopedInvoices = invoices.filter(
+    (invoice) => !invoice.archived && isInRange(invoice.invoiceDate),
+  );
+  const scopedExpenses = expenses.filter(
+    (expense) => !expense.archived && isInRange(expense.date),
+  );
+  const scopedPurchases = purchases.filter((purchase) =>
+    isInRange(purchase.purchaseDate),
+  );
+  const invoiceGrandTotal = scopedInvoices.reduce(
+    (total, invoice) => total + invoice.grandTotal,
+    0,
+  );
+  const paidRevenue = scopedInvoices.reduce(
+    (total, invoice) => total + invoice.paidAmount,
+    0,
+  );
+  const outstandingBalance = scopedInvoices.reduce(
+    (total, invoice) => total + invoice.remainingBalance,
+    0,
+  );
+  const workshopExpenses = scopedExpenses.reduce(
+    (total, expense) => total + expense.amount,
+    0,
+  );
+  const purchaseCosts = scopedPurchases.reduce(
+    (total, purchase) => total + purchase.totalAmount,
+    0,
+  );
+  const totalExpenses = workshopExpenses + purchaseCosts;
+
+  return {
+    invoices: scopedInvoices,
+    expenses: scopedExpenses,
+    purchases: scopedPurchases,
+    invoiceGrandTotal: roundMoney(invoiceGrandTotal),
+    paidRevenue: roundMoney(paidRevenue),
+    outstandingBalance: roundMoney(outstandingBalance),
+    workshopExpenses: roundMoney(workshopExpenses),
+    purchaseCosts: roundMoney(purchaseCosts),
+    totalExpenses: roundMoney(totalExpenses),
+    netProfit: roundMoney(paidRevenue - totalExpenses),
+  };
+};
+
+const normalizePersistedAppData = (
+  storedData: Partial<DemoPersistedData>,
+): DemoPersistedData => {
   const fallback = getDefaultDemoData();
-  const storedData = workshopDataService.loadAppData<DemoPersistedData>(fallback);
 
   return {
     customers: (Array.isArray(storedData.customers) ? storedData.customers : fallback.customers)
@@ -1411,8 +1488,15 @@ const loadAppData = () => {
   };
 };
 
+const loadAppData = () => {
+  const fallback = getDefaultDemoData();
+  const storedData = workshopDataService.loadAppData<DemoPersistedData>(fallback);
+
+  return normalizePersistedAppData(storedData);
+};
+
 const saveAppData = (data: DemoPersistedData) => {
-  workshopDataService.saveAppData(data);
+  return workshopDataService.saveAppData(data);
 };
 
 export default function Home() {
@@ -1562,7 +1646,15 @@ export default function Home() {
       return;
     }
 
-    saveAppData(appData);
+    const saveResult = saveAppData(appData);
+
+    if (!saveResult.ok) {
+      showToast(
+        saveResult.error === "quotaExceeded"
+          ? "toast.storageQuotaExceeded"
+          : "toast.storageSaveFailed",
+      );
+    }
   }, [appData, isAppHydrated]);
 
   useEffect(() => {
@@ -1786,37 +1878,12 @@ export default function Home() {
       jobCard.status !== "completed" &&
       jobCard.status !== "cancelled",
   );
-  const dashboardTodaysRevenue = invoices.reduce(
-    (total, invoice) =>
-      !invoice.archived && isDateInReportRange(invoice.invoiceDate, "today")
-        ? total + invoice.paidAmount
-        : total,
-    0,
-  );
-  const dashboardTodayExpenseTotal = activeExpenses.reduce(
-    (total, expense) =>
-      isDateInReportRange(expense.date, "today") ? total + expense.amount : total,
-    0,
-  );
-  const dashboardTodayPurchaseCosts = purchases.reduce(
-    (total, purchase) =>
-      isDateInReportRange(purchase.purchaseDate, "today")
-        ? total + purchase.totalAmount
-        : total,
-    0,
-  );
-  const dashboardTodayLaborCosts = jobCards.reduce(
-    (total, jobCard) =>
-      !jobCard.archived && isDateInReportRange(jobCard.date, "today")
-        ? total + jobCard.laborCost
-        : total,
-    0,
-  );
-  const dashboardTodayExpenses =
-    dashboardTodayExpenseTotal +
-    dashboardTodayPurchaseCosts +
-    dashboardTodayLaborCosts;
-  const dashboardTodayProfit = dashboardTodaysRevenue - dashboardTodayExpenses;
+  const dashboardFinancials = getFinancialCalculations({
+    expenses,
+    invoices,
+    purchases,
+    isInRange: (date) => isDateInReportRange(date, "today"),
+  });
   const dashboardPendingInvoices = invoices.filter(
     (invoice) =>
       !invoice.archived &&
@@ -1839,9 +1906,9 @@ export default function Home() {
   );
   const dashboardStats = {
     activeJobs: dashboardActiveJobs.length,
-    todaysRevenue: dashboardTodaysRevenue,
-    todayExpenses: dashboardTodayExpenses,
-    todayProfit: dashboardTodayProfit,
+    todaysRevenue: dashboardFinancials.paidRevenue,
+    todayExpenses: dashboardFinancials.totalExpenses,
+    todayProfit: dashboardFinancials.netProfit,
     pendingPayments: dashboardPendingInvoices.length + dashboardPendingJobCards.length,
     lowStockItems: dashboardLowStockItems.length,
   };
@@ -1853,15 +1920,15 @@ export default function Home() {
     ...card,
     value: dashboardStats[card.key],
   }));
-  const reportInvoices = invoices.filter(
-    (invoice) => !invoice.archived && isDateInReportRange(invoice.invoiceDate, reportRange),
-  );
-  const reportExpenses = activeExpenses.filter((expense) =>
-    isDateInReportRange(expense.date, reportRange),
-  );
-  const reportPurchases = purchases.filter((purchase) =>
-    isDateInReportRange(purchase.purchaseDate, reportRange),
-  );
+  const reportFinancials = getFinancialCalculations({
+    expenses,
+    invoices,
+    purchases,
+    isInRange: (date) => isDateInReportRange(date, reportRange),
+  });
+  const reportInvoices = reportFinancials.invoices;
+  const reportExpenses = reportFinancials.expenses;
+  const reportPurchases = reportFinancials.purchases;
   const reportCompletedJobs = jobCards.filter(
     (jobCard) =>
       !jobCard.archived &&
@@ -1888,28 +1955,12 @@ export default function Home() {
       .filter((expense) => expense.category === category)
       .reduce((total, expense) => total + expense.amount, 0),
   }));
-  const reportTotalRevenue = reportInvoices.reduce(
-    (total, invoice) => total + invoice.grandTotal,
-    0,
-  );
-  const reportPaidRevenue = reportInvoices.reduce(
-    (total, invoice) => total + invoice.paidAmount,
-    0,
-  );
-  const reportOutstandingBalance = reportInvoices.reduce(
-    (total, invoice) => total + invoice.remainingBalance,
-    0,
-  );
-  const reportTotalExpenses = reportExpenses.reduce(
-    (total, expense) => total + expense.amount,
-    0,
-  );
-  const reportPurchaseCosts = reportPurchases.reduce(
-    (total, purchase) => total + purchase.totalAmount,
-    0,
-  );
-  const reportEstimatedNetProfit =
-    reportPaidRevenue - reportTotalExpenses - reportPurchaseCosts;
+  const reportTotalRevenue = reportFinancials.invoiceGrandTotal;
+  const reportPaidRevenue = reportFinancials.paidRevenue;
+  const reportOutstandingBalance = reportFinancials.outstandingBalance;
+  const reportTotalExpenses = reportFinancials.workshopExpenses;
+  const reportPurchaseCosts = reportFinancials.purchaseCosts;
+  const reportEstimatedNetProfit = reportFinancials.netProfit;
   const reportUnpaidInvoices = reportInvoices.filter(
     (invoice) => invoice.paymentStatus !== "paid" || invoice.remainingBalance > 0,
   );
@@ -2459,19 +2510,6 @@ export default function Home() {
             : jobCard,
         ),
       );
-      setInvoices((currentInvoices) =>
-        currentInvoices.map((invoice) =>
-          invoice.customerId === editingCustomerId ||
-          (existingCustomer && invoice.customerName === existingCustomer.name)
-            ? {
-                ...invoice,
-                customerId: editingCustomerId,
-                customerName: nextCustomerName,
-                customerPhone: normalizedPhone,
-              }
-            : invoice,
-        ),
-      );
       closeCustomerModal();
       return;
     }
@@ -2555,9 +2593,6 @@ export default function Home() {
       const resolvedCustomerId =
         matchingCustomer?.id ?? existingVehicle?.customerId ?? 0;
       const resolvedCustomerName = matchingCustomer?.name ?? nextOwnerName;
-      const resolvedCustomerPhone =
-        matchingCustomer?.phone ??
-        customers.find((customer) => customer.id === resolvedCustomerId)?.phone;
 
       setVehicles((currentVehicles) =>
         currentVehicles.map((vehicle) =>
@@ -2590,22 +2625,6 @@ export default function Home() {
                 plateNumber: nextPlateNumber,
               }
             : jobCard,
-        ),
-      );
-      setInvoices((currentInvoices) =>
-        currentInvoices.map((invoice) =>
-          invoice.vehicleId === editingVehicleId ||
-          (existingVehicle && invoice.plateNumber === existingVehicle.plateNumber)
-            ? {
-                ...invoice,
-                vehicleId: editingVehicleId,
-                customerId: resolvedCustomerId,
-                customerName: resolvedCustomerName,
-                customerPhone: resolvedCustomerPhone ?? invoice.customerPhone,
-                vehicle: nextVehicleLabel || invoice.vehicle,
-                plateNumber: nextPlateNumber,
-              }
-            : invoice,
         ),
       );
       closeVehicleModal();
@@ -2902,19 +2921,12 @@ export default function Home() {
       return;
     }
 
-    if (archived && targetJobCard?.stockDeducted) {
-      applyJobStockAdjustment(targetJobCard.deductedParts, []);
-    }
-
     setJobCards((currentJobCards) =>
       currentJobCards.map((jobCard) =>
         jobCard.id === jobCardId
           ? {
               ...jobCard,
               archived,
-              status: archived ? "cancelled" : "inWorkshop",
-              stockDeducted: archived ? false : jobCard.stockDeducted,
-              deductedParts: archived ? [] : jobCard.deductedParts,
             }
           : jobCard,
       ),
@@ -3457,6 +3469,23 @@ export default function Home() {
   };
 
   const getInvoiceValidationErrorKey = (laborCost: number, partsCost: number) => {
+    const invoiceInputs = [
+      invoiceForm.laborCost,
+      invoiceForm.partsCost,
+      invoiceForm.discount,
+      invoiceForm.taxPercentage,
+      invoiceForm.paidAmount,
+    ];
+
+    if (
+      invoiceInputs.some((value) => {
+        const parsedValue = parseSafeNumber(value);
+        return parsedValue !== null && parsedValue < 0;
+      })
+    ) {
+      return "toast.negativeValuesNotAllowed";
+    }
+
     const discountValidation = validateOptionalNonNegativeAmount(
       invoiceForm.discount,
       "discount",
@@ -3704,7 +3733,7 @@ export default function Home() {
     );
 
     if (invoiceValidationTotals.grandTotal <= 0) {
-      logInvoiceSaveFailure("toast.invoiceAmountRequired", {
+      logInvoiceSaveFailure("toast.invoiceTotalRequired", {
         grandTotal: invoiceValidationTotals.grandTotal,
         laborCost: laborCostForValidation,
         partsCost: partsCostForValidation,
@@ -3714,7 +3743,10 @@ export default function Home() {
     }
 
     if (!selectedJobCard && laborCostForValidation + partsCostForValidation <= 0) {
-      logInvoiceSaveFailure("toast.invoiceAmountRequired", {
+      const quickInvoiceErrorKey = invoiceForm.workPerformed.trim()
+        ? "toast.invoiceTotalRequired"
+        : "toast.invoiceServiceOrAmountRequired";
+      logInvoiceSaveFailure(quickInvoiceErrorKey, {
         laborCost: laborCostForValidation,
         partsCost: partsCostForValidation,
       });
@@ -3769,6 +3801,7 @@ export default function Home() {
           invoiceId: editingInvoiceId,
           mode: "quick-payment-update",
         });
+        showToast("toast.invoiceSaved");
         closeInvoiceModal();
         return;
       }
@@ -3823,6 +3856,7 @@ export default function Home() {
         invoiceId: editingInvoiceId,
         mode: "job-card-payment-update",
       });
+      showToast("toast.invoiceSaved");
       closeInvoiceModal();
       return;
     }
@@ -3835,7 +3869,11 @@ export default function Home() {
       let invoiceCustomer = customers.find(
         (customer) => customer.id === Number(invoiceForm.customerId),
       );
-      const normalizedPhone = normalizeSaudiPhone(invoiceForm.customerPhone);
+      const rawCustomerPhone = invoiceForm.customerPhone.trim();
+      const normalizedPhone = rawCustomerPhone
+        ? normalizeSaudiPhone(invoiceForm.customerPhone)
+        : "";
+      const normalizedCustomerName = normalizeSearchName(invoiceForm.customerName);
 
       if (!invoiceCustomer) {
         if (!invoiceForm.customerName.trim()) {
@@ -3843,7 +3881,7 @@ export default function Home() {
           return;
         }
 
-        if (!isValidSaudiPhone(normalizedPhone)) {
+        if (normalizedPhone && !isValidSaudiPhone(normalizedPhone)) {
           logInvoiceSaveFailure("toast.phoneInvalid", {
             customerPhone: invoiceForm.customerPhone,
             normalizedPhone,
@@ -3851,22 +3889,31 @@ export default function Home() {
           return;
         }
 
-        invoiceCustomer = customers.find(
-          (customer) => normalizeSaudiPhone(customer.phone) === normalizedPhone,
+        const duplicateCustomer = customers.find(
+          (customer) =>
+            !customer.archived &&
+            (normalizeSearchName(customer.name) === normalizedCustomerName ||
+              (normalizedPhone &&
+                normalizeSaudiPhone(customer.phone) === normalizedPhone)),
         );
 
-        if (!invoiceCustomer) {
-          invoiceCustomer = {
-            id: createRecordId(),
-            name: invoiceForm.customerName.trim(),
-            phone: normalizedPhone,
-            city: invoiceForm.customerCity.trim(),
-            type: "new",
-            notes: "",
-            archived: false,
-          };
-          setCustomers((currentCustomers) => [invoiceCustomer as Customer, ...currentCustomers]);
+        if (duplicateCustomer) {
+          logInvoiceSaveFailure("toast.duplicateCustomerFound", {
+            customerId: duplicateCustomer.id,
+          });
+          return;
         }
+
+        invoiceCustomer = {
+          id: createRecordId(),
+          name: invoiceForm.customerName.trim(),
+          phone: normalizedPhone,
+          city: invoiceForm.customerCity.trim(),
+          type: "new",
+          notes: "",
+          archived: false,
+        };
+        setCustomers((currentCustomers) => [invoiceCustomer as Customer, ...currentCustomers]);
       }
 
       let invoiceVehicle =
@@ -3910,6 +3957,7 @@ export default function Home() {
     };
 
     setInvoices((currentInvoices) => [nextInvoice, ...currentInvoices]);
+    showToast("toast.invoiceSaved");
     console.info("[CAR DC9] Invoice save succeeded", {
       invoiceId: nextInvoice.id,
       invoiceNumber: nextInvoice.invoiceNumber,
@@ -4215,6 +4263,72 @@ export default function Home() {
     setLocale(defaultDemoData.settings.defaultLanguage);
     setActiveSection("settings");
     setSettingsSavedMessage("settings.demoReset.success");
+  };
+
+  const downloadBackup = () => {
+    if (!workshopDataService.canUseBrowser()) {
+      showToast("toast.storageSaveFailed");
+      return;
+    }
+
+    const backupJson = workshopDataService.exportAppData(appData);
+    const backupBlob = new Blob([backupJson], { type: "application/json" });
+    const backupUrl = window.URL.createObjectURL(backupBlob);
+    const backupLink = document.createElement("a");
+    backupLink.href = backupUrl;
+    backupLink.download = `car-dc9-backup-${getTodayInputValue()}.json`;
+    backupLink.click();
+    window.URL.revokeObjectURL(backupUrl);
+    showToast("toast.backupDownloaded");
+  };
+
+  const importBackup = (event: ChangeEvent<HTMLInputElement>) => {
+    const backupFile = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!backupFile) {
+      return;
+    }
+
+    if (
+      workshopDataService.canUseBrowser() &&
+      !window.confirm(t("settings.backup.restoreConfirm"))
+    ) {
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      try {
+        const parsedBackup = JSON.parse(String(reader.result)) as Partial<DemoPersistedData>;
+        const nextAppData = normalizePersistedAppData(parsedBackup);
+        const saveResult = saveAppData(nextAppData);
+
+        if (!saveResult.ok) {
+          showToast(
+            saveResult.error === "quotaExceeded"
+              ? "toast.storageQuotaExceeded"
+              : "toast.storageSaveFailed",
+          );
+          return;
+        }
+
+        setAppData(nextAppData);
+        setSettingsDraft(nextAppData.settings);
+        setLocale(nextAppData.settings.defaultLanguage);
+        setActiveSection("settings");
+        showToast("toast.backupRestored");
+      } catch {
+        showToast("toast.backupInvalid");
+      }
+    };
+
+    reader.onerror = () => {
+      showToast("toast.backupInvalid");
+    };
+
+    reader.readAsText(backupFile);
   };
 
   const sectionHeaderKeys: Record<SectionKey, { title: string; subtitle: string }> = {
@@ -4623,6 +4737,8 @@ export default function Home() {
               />
             ) : activeSection === "settings" ? (
               <SettingsSection
+                onDownloadBackup={downloadBackup}
+                onImportBackup={importBackup}
                 onResetDemoData={resetDemoData}
                 onReset={resetSettings}
                 onSave={saveSettings}
@@ -4866,6 +4982,53 @@ function DashboardSection({
   );
 }
 
+function PaginationControls({
+  currentPage,
+  onPageChange,
+  pageCount,
+  summary,
+  t,
+}: {
+  currentPage: number;
+  onPageChange: (page: number) => void;
+  pageCount: number;
+  summary: string;
+  t: (key: string) => string;
+}) {
+  if (pageCount <= 1) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <p>{summary}</p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage <= 1}
+          className="h-9 rounded-md border border-slate-200 px-3 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+        >
+          {t("common.previous")}
+        </button>
+        <span className="rounded-md bg-slate-50 px-3 py-2">
+          {t("common.pageSummary")
+            .replace("{page}", String(currentPage))
+            .replace("{pages}", String(pageCount))}
+        </span>
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(pageCount, currentPage + 1))}
+          disabled={currentPage >= pageCount}
+          className="h-9 rounded-md border border-slate-200 px-3 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+        >
+          {t("common.next")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CustomersSection({
   activeTab,
   customerForm,
@@ -4913,6 +5076,15 @@ function CustomersSection({
   getCustomerVehicles: (customerId: number) => Vehicle[];
   t: (key: string) => string;
 }) {
+  const pageSize = 50;
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(customers.length / pageSize));
+  const safePage = Math.min(currentPage, pageCount);
+  const paginatedCustomers = customers.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize,
+  );
+
   return (
     <>
       <section className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
@@ -4965,7 +5137,7 @@ function CustomersSection({
 
       {customers.length > 0 ? (
         <section className="grid gap-4 xl:grid-cols-2">
-          {customers.map((customer) => {
+          {paginatedCustomers.map((customer) => {
             const customerVehicles = getCustomerVehicles(customer.id);
             const customerJobs = getCustomerJobs(customer.id);
             const customerInvoices = invoices.filter(
@@ -5081,6 +5253,16 @@ function CustomersSection({
           </p>
         </section>
       )}
+
+      <PaginationControls
+        currentPage={safePage}
+        onPageChange={setCurrentPage}
+        pageCount={pageCount}
+        summary={t("common.paginationSummary")
+          .replace("{shown}", String(paginatedCustomers.length))
+          .replace("{total}", String(customers.length))}
+        t={t}
+      />
 
       {isModalOpen ? (
         <CustomerModal
@@ -5283,6 +5465,15 @@ function VehiclesSection({
   vehicleSearch: string;
   vehicles: Vehicle[];
 }) {
+  const pageSize = 50;
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(vehicles.length / pageSize));
+  const safePage = Math.min(currentPage, pageCount);
+  const paginatedVehicles = vehicles.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize,
+  );
+
   return (
     <>
       <section className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
@@ -5335,7 +5526,7 @@ function VehiclesSection({
 
       {vehicles.length > 0 ? (
         <section className="grid gap-4 xl:grid-cols-2">
-          {vehicles.map((vehicle) => {
+          {paginatedVehicles.map((vehicle) => {
             const serviceSummaryJobs = getServiceSummaryJobs(vehicle.id);
             const latestVehicleJob = getLatestVehicleJob(vehicle.id);
             const activeJob = getActiveJob(vehicle.id);
@@ -5470,6 +5661,16 @@ function VehiclesSection({
           </p>
         </section>
       )}
+
+      <PaginationControls
+        currentPage={safePage}
+        onPageChange={setCurrentPage}
+        pageCount={pageCount}
+        summary={t("common.paginationSummary")
+          .replace("{shown}", String(paginatedVehicles.length))
+          .replace("{total}", String(vehicles.length))}
+        t={t}
+      />
 
       {isModalOpen ? (
         <VehicleModal
@@ -6762,6 +6963,15 @@ function InvoicesSection({
   t: (key: string) => string;
   vehicles: Vehicle[];
 }) {
+  const pageSize = 50;
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(invoices.length / pageSize));
+  const safePage = Math.min(currentPage, pageCount);
+  const paginatedInvoices = invoices.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize,
+  );
+
   return (
     <>
       <section className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
@@ -6798,7 +7008,7 @@ function InvoicesSection({
 
       {invoices.length > 0 ? (
         <section className="grid gap-4 xl:grid-cols-2">
-          {invoices.map((invoice) => (
+          {paginatedInvoices.map((invoice) => (
             <article key={invoice.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -6855,6 +7065,16 @@ function InvoicesSection({
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{t(activeTab === "archived" ? "invoices.emptyArchivedBody" : "invoices.emptyActiveBody")}</p>
         </section>
       )}
+
+      <PaginationControls
+        currentPage={safePage}
+        onPageChange={setCurrentPage}
+        pageCount={pageCount}
+        summary={t("common.paginationSummary")
+          .replace("{shown}", String(paginatedInvoices.length))
+          .replace("{total}", String(invoices.length))}
+        t={t}
+      />
 
       {isModalOpen ? (
         <InvoiceModal
@@ -7009,6 +7229,21 @@ function InvoiceModal({
     invoiceForm.vehicleId && invoiceForm.vehicleId !== "__new"
       ? vehicles.find((vehicle) => vehicle.id === Number(invoiceForm.vehicleId))
       : undefined;
+  const isQuickInvoice = invoiceForm.invoiceType === "quick";
+  const normalizedNewCustomerName = normalizeSearchName(invoiceForm.customerName);
+  const normalizedNewCustomerPhone = invoiceForm.customerPhone.trim()
+    ? normalizeSaudiPhone(invoiceForm.customerPhone)
+    : "";
+  const duplicateCustomer =
+    isQuickInvoice && !selectedCustomer && normalizedNewCustomerName
+      ? customers.find(
+          (customer) =>
+            !customer.archived &&
+            (normalizeSearchName(customer.name) === normalizedNewCustomerName ||
+              (normalizedNewCustomerPhone &&
+                normalizeSaudiPhone(customer.phone) === normalizedNewCustomerPhone)),
+        )
+      : undefined;
   const discountValue = parseSafeNumber(invoiceForm.discount);
   const taxPercentageValue = parseSafeNumber(invoiceForm.taxPercentage);
   const paidAmountValue = parseSafeNumber(invoiceForm.paidAmount);
@@ -7030,26 +7265,35 @@ function InvoiceModal({
   const grandTotal = Math.max(0, subtotal + taxAmount - discount);
   const remainingBalance = Math.max(0, grandTotal - paidAmount);
   const paymentStatus = paidAmount <= 0 ? "unpaid" : paidAmount >= grandTotal ? "paid" : "partial";
-  const discountErrorKey = getFinancialInputErrorKey(invoiceForm.discount);
-  const taxPercentageErrorKey = getFinancialInputErrorKey(
+  const discountErrorKey = getInvoiceMoneyInputErrorKey(invoiceForm.discount);
+  const taxPercentageErrorKey = getInvoiceMoneyInputErrorKey(
     invoiceForm.taxPercentage,
   );
   const laborCostErrorKey = selectedJobCard
     ? null
-    : getFinancialInputErrorKey(invoiceForm.laborCost);
+    : getInvoiceMoneyInputErrorKey(invoiceForm.laborCost);
   const partsCostErrorKey = selectedJobCard
     ? null
-    : getFinancialInputErrorKey(invoiceForm.partsCost);
-  const invoicePaidAmountErrorKey = getPaidAmountInputErrorKey(
-    invoiceForm.paidAmount,
-    grandTotal,
-  );
+    : getInvoiceMoneyInputErrorKey(invoiceForm.partsCost);
+  const invoicePaidAmountErrorKey =
+    getInvoiceMoneyInputErrorKey(invoiceForm.paidAmount) ??
+    getPaidAmountInputErrorKey(invoiceForm.paidAmount, grandTotal);
+  const serviceOrAmountErrorKey =
+    isQuickInvoice && !selectedJobCard && !invoiceForm.workPerformed.trim() && subtotal <= 0
+      ? "toast.invoiceServiceOrAmountRequired"
+      : null;
+  const customerRequiredErrorKey =
+    isQuickInvoice && !selectedCustomer && !invoiceForm.customerName.trim()
+      ? "toast.invoiceCustomerRequired"
+      : null;
+  const totalErrorKey = subtotal > 0 && grandTotal <= 0 ? "toast.invoiceTotalRequired" : null;
   const hasInvoiceFinancialErrors = Boolean(
     discountErrorKey ||
       taxPercentageErrorKey ||
       laborCostErrorKey ||
       partsCostErrorKey ||
-      invoicePaidAmountErrorKey,
+      invoicePaidAmountErrorKey ||
+      totalErrorKey,
   );
   const getPaidAmountForStatus = (
     status: PaymentStatus,
@@ -7251,31 +7495,34 @@ function InvoiceModal({
             <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">{t("invoices.form.close")}</button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-28">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <div className="grid gap-4">
+            <section className="rounded-lg border border-slate-200 bg-white p-4">
             <label className="block">
-              <span className="text-sm font-medium text-slate-700">{t("invoices.form.invoiceType")}</span>
+              <span className="text-sm font-semibold text-slate-900">{t("invoices.form.invoiceSource")}</span>
               <select
                 value={invoiceForm.invoiceType}
                 onChange={(event) =>
                   updateInvoiceType(event.target.value as InvoiceForm["invoiceType"])
                 }
                 disabled={isEditing}
-                className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 disabled:bg-slate-100"
+                className="mt-2 h-12 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-emerald-600 disabled:bg-slate-100"
               >
                 <option value="quick">{t("invoices.form.quickInvoiceType")}</option>
                 <option value="jobCard">{t("invoices.form.jobCardInvoiceType")}</option>
               </select>
             </label>
+            </section>
 
             {invoiceForm.invoiceType === "jobCard" ? (
+              <section className="rounded-lg border border-slate-200 bg-white p-4">
               <label className="block">
-                <span className="text-sm font-medium text-slate-700">{t("invoices.fields.jobCardNumber")}</span>
+                <span className="text-sm font-semibold text-slate-900">{t("invoices.form.completedJobCard")}</span>
                 <select
                   value={invoiceForm.jobCardId}
                   onChange={(event) => updateSelectedJobCard(event.target.value)}
                   disabled={isEditing}
-                  className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 disabled:bg-slate-100"
+                  className="mt-2 h-12 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 disabled:bg-slate-100"
                 >
                   <option value="">{t("invoices.form.jobCardPlaceholder")}</option>
                   {availableJobCards.map((jobCard) => (
@@ -7283,10 +7530,16 @@ function InvoiceModal({
                   ))}
                 </select>
               </label>
+              </section>
             ) : null}
 
             {selectedJobCard ? (
-              <section className="grid gap-4 rounded-lg bg-slate-50 p-4 sm:grid-cols-3">
+              <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-3">
+                <div className="sm:col-span-3">
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    {t("invoices.form.serviceDetailsSection")}
+                  </h3>
+                </div>
                 <CustomerField label={t("invoices.fields.customerName")} value={selectedJobCard.customerName} />
                 <CustomerField label={t("invoices.fields.vehicle")} value={selectedJobCard.vehicleLabel} />
                 <CustomerField label={t("invoices.fields.plateNumber")} value={selectedJobCard.plateNumber} />
@@ -7299,7 +7552,7 @@ function InvoiceModal({
                 <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
                   <div className="sm:col-span-2">
                     <h3 className="text-sm font-semibold text-slate-900">
-                      {t("invoices.form.customerSection")}
+                      {t("invoices.form.customerInformationSection")}
                     </h3>
                     <p className="mt-1 text-xs text-slate-500">
                       {t("invoices.form.quickSubtitle")}
@@ -7337,20 +7590,20 @@ function InvoiceModal({
                         value={invoiceForm.customerName}
                         onChange={(value) => onUpdateForm({ ...invoiceForm, customerName: value })}
                         placeholder={t("customers.form.namePlaceholder")}
+                        error={customerRequiredErrorKey ? t(customerRequiredErrorKey) : undefined}
                         required
                         disabled={isEditing}
                       />
                       <PhoneField
                         label={t("invoices.fields.customerPhone")}
-                        value={formatPhone(invoiceForm.customerPhone)}
+                        value={invoiceForm.customerPhone}
                         onChange={(value) =>
                           onUpdateForm({
                             ...invoiceForm,
-                            customerPhone: normalizeSaudiPhone(value) || value,
+                            customerPhone: value,
                           })
                         }
                         placeholder={t("customers.form.phonePlaceholder")}
-                        required
                       />
                       <FormField
                         label={t("customers.fields.city")}
@@ -7359,6 +7612,26 @@ function InvoiceModal({
                         placeholder={t("customers.form.cityPlaceholder")}
                         disabled={isEditing}
                       />
+                      {duplicateCustomer ? (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 sm:col-span-2">
+                          <p className="font-semibold">
+                            {t("invoices.form.duplicateCustomerTitle")}
+                          </p>
+                          <p className="mt-1">
+                            {t("invoices.form.duplicateCustomerBody").replace(
+                              "{name}",
+                              duplicateCustomer.name,
+                            )}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => updateSelectedCustomer(String(duplicateCustomer.id))}
+                            className="mt-3 h-10 rounded-md bg-amber-600 px-3 text-sm font-semibold text-white transition hover:bg-amber-700"
+                          >
+                            {t("invoices.form.useExistingCustomer")}
+                          </button>
+                        </div>
+                      ) : null}
                     </>
                   )}
                 </section>
@@ -7366,7 +7639,7 @@ function InvoiceModal({
                 <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
                   <div className="sm:col-span-2">
                     <h3 className="text-sm font-semibold text-slate-900">
-                      {t("invoices.form.vehicleSection")}
+                      {t("invoices.form.vehicleInformationSection")}
                     </h3>
                     <p className="mt-1 text-xs text-slate-500">
                       {t("invoices.form.vehicleOptional")}
@@ -7436,6 +7709,11 @@ function InvoiceModal({
                 </section>
 
                 <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      {t("invoices.form.serviceDetailsSection")}
+                    </h3>
+                  </div>
                   <FormField
                     label={t("invoices.fields.workPerformed")}
                     value={invoiceForm.workPerformed}
@@ -7445,6 +7723,7 @@ function InvoiceModal({
                   />
                   <FormField
                     inputType="number"
+                    inputMode="decimal"
                     label={t("invoices.fields.laborCost")}
                     min="0"
                     step="0.01"
@@ -7456,6 +7735,7 @@ function InvoiceModal({
                   />
                   <FormField
                     inputType="number"
+                    inputMode="decimal"
                     label={t("invoices.fields.partsCost")}
                     min="0"
                     step="0.01"
@@ -7469,12 +7749,17 @@ function InvoiceModal({
               </>
             ) : null}
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <h3 className="text-sm font-semibold text-slate-900">
+                  {t("invoices.form.paymentDetailsSection")}
+                </h3>
+              </div>
               <FormField inputType="date" label={t("invoices.fields.invoiceDate")} value={invoiceForm.invoiceDate} onChange={(value) => onUpdateForm({ ...invoiceForm, invoiceDate: value })} placeholder={t("invoices.form.invoiceDatePlaceholder")} required />
               <FormField inputType="date" label={t("invoices.fields.dueDate")} value={invoiceForm.dueDate} onChange={(value) => onUpdateForm({ ...invoiceForm, dueDate: value })} placeholder={t("invoices.form.dueDatePlaceholder")} required />
-              <FormField inputType="number" label={t("invoices.fields.discount")} min="0" step="0.01" value={invoiceForm.discount} onChange={(value) => updateInvoiceTotalInput({ discount: value })} placeholder={t("invoices.form.discountPlaceholder")} error={discountErrorKey ? t(discountErrorKey) : undefined} disabled={isEditing} />
+              <FormField inputType="number" inputMode="decimal" label={t("invoices.fields.discount")} min="0" step="0.01" value={invoiceForm.discount} onChange={(value) => updateInvoiceTotalInput({ discount: value })} placeholder={t("invoices.form.discountPlaceholder")} error={discountErrorKey ? t(discountErrorKey) : undefined} disabled={isEditing} />
               <PercentField label={t("invoices.fields.taxPercentage")} value={invoiceForm.taxPercentage} onChange={(value) => updateInvoiceTotalInput({ taxPercentage: value })} placeholder={t("invoices.form.taxPercentagePlaceholder")} error={taxPercentageErrorKey ? t(taxPercentageErrorKey) : undefined} disabled={isEditing} />
-              <FormField inputType="number" label={t("invoices.fields.paidAmount")} min="0" step="0.01" value={invoiceForm.paidAmount} onChange={updateInvoicePaidAmount} placeholder={t("invoices.form.paidPlaceholder")} error={invoicePaidAmountErrorKey ? t(invoicePaidAmountErrorKey) : undefined} />
+              <FormField inputType="number" inputMode="decimal" label={t("invoices.fields.paidAmount")} min="0" step="0.01" value={invoiceForm.paidAmount} onChange={updateInvoicePaidAmount} placeholder={t("invoices.form.paidPlaceholder")} error={invoicePaidAmountErrorKey ? t(invoicePaidAmountErrorKey) : undefined} />
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">{t("invoices.fields.paymentStatus")}</span>
                 <select value={paymentStatus} onChange={(event) => updateInvoicePaymentStatus(event.target.value as PaymentStatus)} className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600">
@@ -7483,9 +7768,14 @@ function InvoiceModal({
                   <option value="paid">{t("jobCards.paymentStatus.paid")}</option>
                 </select>
               </label>
-            </div>
+            </section>
 
             <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-3">
+              <div className="sm:col-span-3">
+                <h3 className="text-sm font-semibold text-slate-900">
+                  {t("invoices.form.invoiceSummarySection")}
+                </h3>
+              </div>
               <CustomerField label={t("invoices.fields.taxAmount")} value={formatMoney(taxAmount)} />
               <CustomerField label={t("invoices.fields.grandTotal")} value={formatMoney(grandTotal)} />
               <CustomerField label={t("invoices.fields.remainingBalance")} value={formatMoney(remainingBalance)} />
@@ -7493,6 +7783,11 @@ function InvoiceModal({
                 <p className="text-xs font-medium uppercase text-slate-400">{t("invoices.fields.paymentStatus")}</p>
                 <div className="mt-1"><PaymentStatusBadge status={paymentStatus} t={t} /></div>
               </div>
+              {serviceOrAmountErrorKey || totalErrorKey ? (
+                <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 sm:col-span-3">
+                  {t(serviceOrAmountErrorKey ?? totalErrorKey ?? "toast.amountInvalid")}
+                </p>
+              ) : null}
             </section>
 
             <label className="block">
@@ -7752,6 +8047,8 @@ function PrintInvoiceModal({
 }
 
 function SettingsSection({
+  onDownloadBackup,
+  onImportBackup,
   onResetDemoData,
   onReset,
   onSave,
@@ -7761,6 +8058,8 @@ function SettingsSection({
   settingsPhoneError,
   t,
 }: {
+  onDownloadBackup: () => void;
+  onImportBackup: (event: ChangeEvent<HTMLInputElement>) => void;
   onResetDemoData: () => void;
   onReset: () => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
@@ -7814,14 +8113,35 @@ function SettingsSection({
             <p className="text-sm font-semibold text-sky-900">{t("settings.demoNotice.title")}</p>
             <p className="mt-1 text-sm leading-6 text-sky-700">{t("settings.demoNotice.body")}</p>
           </div>
-          <button
-            type="button"
-            onClick={onResetDemoData}
-            className="h-10 rounded-md border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
-          >
-            {t("settings.demoReset.button")}
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={onDownloadBackup}
+              className="h-10 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+            >
+              {t("settings.backup.download")}
+            </button>
+            <label className="flex h-10 cursor-pointer items-center justify-center rounded-md border border-amber-200 bg-white px-3 text-sm font-semibold text-amber-700 transition hover:bg-amber-50">
+              {t("settings.backup.import")}
+              <input
+                type="file"
+                accept="application/json,.json"
+                onChange={onImportBackup}
+                className="sr-only"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={onResetDemoData}
+              className="h-10 rounded-md border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+            >
+              {t("settings.demoReset.button")}
+            </button>
+          </div>
         </div>
+        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+          {t("settings.backup.warning")}
+        </p>
       </section>
 
       <div className="grid gap-6 xl:grid-cols-2">
@@ -9854,6 +10174,7 @@ function RecordTabs({
 function FormField({
   disabled,
   error,
+  inputMode,
   inputType = "text",
   label,
   min,
@@ -9865,6 +10186,7 @@ function FormField({
 }: {
   disabled?: boolean;
   error?: string;
+  inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search";
   inputType?: string;
   label: string;
   min?: string;
@@ -9879,6 +10201,7 @@ function FormField({
       <span className="text-sm font-medium text-slate-700">{label}</span>
       <input
         type={inputType}
+        inputMode={inputMode}
         min={min}
         step={step ?? (inputType === "number" ? "0.01" : undefined)}
         value={value}
@@ -9967,6 +10290,7 @@ function PercentField({
       }`}>
         <input
           type="number"
+          inputMode="decimal"
           min="0"
           step={step}
           value={value}
