@@ -318,6 +318,8 @@ type Invoice = {
   invoiceNumber: string;
   invoiceDate: string;
   dueDate: string;
+  customerId?: number;
+  vehicleId?: number;
   customerName: string;
   customerPhone: string;
   vehicle: string;
@@ -345,7 +347,22 @@ type Invoice = {
 };
 
 type InvoiceForm = {
+  invoiceType: "quick" | "jobCard";
   jobCardId: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  customerCity: string;
+  vehicleId: string;
+  vehiclePlateNumber: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleYear: string;
+  vehicleColor: string;
+  vehicleType: string;
+  workPerformed: string;
+  laborCost: string;
+  partsCost: string;
   invoiceDate: string;
   dueDate: string;
   discount: string;
@@ -985,7 +1002,22 @@ const emptyExpenseForm: ExpenseForm = {
 };
 
 const emptyInvoiceForm: InvoiceForm = {
+  invoiceType: "quick",
   jobCardId: "",
+  customerId: "",
+  customerName: "",
+  customerPhone: "",
+  customerCity: "",
+  vehicleId: "",
+  vehiclePlateNumber: "",
+  vehicleMake: "",
+  vehicleModel: "",
+  vehicleYear: "",
+  vehicleColor: "",
+  vehicleType: "",
+  workPerformed: "",
+  laborCost: "",
+  partsCost: "",
   invoiceDate: "",
   dueDate: "",
   discount: "0",
@@ -1167,6 +1199,9 @@ const validateNonNegativeAmount = (value: unknown, label: string) => {
   };
 };
 
+const roundMoney = (value: number) =>
+  Number.isFinite(value) ? Math.round((value + Number.EPSILON) * 100) / 100 : 0;
+
 const validatePaidAmount = (paid: unknown, total: number) => {
   const paidValidation = validateNonNegativeAmount(paid, "paidAmount");
 
@@ -1174,7 +1209,10 @@ const validatePaidAmount = (paid: unknown, total: number) => {
     return paidValidation;
   }
 
-  if (paidValidation.value > total) {
+  const roundedPaidAmount = roundMoney(paidValidation.value);
+  const roundedTotal = roundMoney(total);
+
+  if (roundedPaidAmount > roundedTotal) {
     return {
       errorKey: "toast.paidAmountTooHigh",
       label: paidValidation.label,
@@ -1182,7 +1220,10 @@ const validatePaidAmount = (paid: unknown, total: number) => {
     };
   }
 
-  return paidValidation;
+  return {
+    ...paidValidation,
+    value: roundedPaidAmount,
+  };
 };
 
 const validateOptionalNonNegativeAmount = (value: unknown, label: string) =>
@@ -1805,6 +1846,7 @@ export default function Home() {
     jobCardId: number,
     excludeInvoiceId?: number,
   ) =>
+    jobCardId > 0 &&
     invoices.some(
       (invoice) =>
         !invoice.archived &&
@@ -2121,7 +2163,8 @@ export default function Home() {
     return new Intl.NumberFormat(numberLocale, {
       style: "currency",
       currency: currencyCode,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(value);
   }
 
@@ -2199,11 +2242,16 @@ export default function Home() {
   };
 
   const getPaymentStatusFromAmounts = (paidAmount: number, grandTotal: number) => {
-    if (paidAmount <= 0) {
+    const roundedPaidAmount = roundMoney(paidAmount);
+    const roundedGrandTotal = roundMoney(grandTotal);
+
+    if (roundedPaidAmount <= 0) {
       return "unpaid" as const;
     }
 
-    return paidAmount >= grandTotal ? ("paid" as const) : ("partial" as const);
+    return roundedPaidAmount >= roundedGrandTotal
+      ? ("paid" as const)
+      : ("partial" as const);
   };
 
   const getInvoiceCalculations = (
@@ -2213,17 +2261,19 @@ export default function Home() {
     taxPercentage: number,
     paidAmount: number,
   ) => {
-    const subtotal = laborCost + partsCost;
-    const taxAmount = subtotal * (taxPercentage / 100);
-    const grandTotal = Math.max(0, subtotal + taxAmount - discount);
-    const remainingBalance = Math.max(0, grandTotal - paidAmount);
+    const subtotal = roundMoney(laborCost + partsCost);
+    const taxAmount = roundMoney(subtotal * (taxPercentage / 100));
+    const grandTotal = roundMoney(Math.max(0, subtotal + taxAmount - discount));
+    const roundedPaidAmount = roundMoney(paidAmount);
+    const remainingBalance = roundMoney(Math.max(0, grandTotal - roundedPaidAmount));
 
     return {
       subtotal,
       taxAmount,
       grandTotal,
       remainingBalance,
-      paymentStatus: getPaymentStatusFromAmounts(paidAmount, grandTotal),
+      paidAmount: roundedPaidAmount,
+      paymentStatus: getPaymentStatusFromAmounts(roundedPaidAmount, grandTotal),
     };
   };
 
@@ -3314,7 +3364,22 @@ export default function Home() {
     if (invoice) {
       setEditingInvoiceId(invoice.id);
       setInvoiceForm({
+        invoiceType: invoice.jobCardId > 0 ? "jobCard" : "quick",
         jobCardId: String(invoice.jobCardId),
+        customerId: invoice.customerId ? String(invoice.customerId) : "",
+        customerName: invoice.customerName,
+        customerPhone: invoice.customerPhone,
+        customerCity: "",
+        vehicleId: invoice.vehicleId ? String(invoice.vehicleId) : "",
+        vehiclePlateNumber: invoice.plateNumber,
+        vehicleMake: invoice.vehicle,
+        vehicleModel: "",
+        vehicleYear: "",
+        vehicleColor: "",
+        vehicleType: "",
+        workPerformed: invoice.workPerformed,
+        laborCost: String(invoice.laborCost),
+        partsCost: String(invoice.partsCost),
         invoiceDate: invoice.invoiceDate,
         dueDate: invoice.dueDate,
         discount: String(invoice.discount),
@@ -3356,7 +3421,13 @@ export default function Home() {
     setEditingInvoiceId(null);
     setInvoiceForm({
       ...emptyInvoiceForm,
+      invoiceType: "jobCard",
       jobCardId: String(jobCard.id),
+      customerId: String(jobCard.customerId),
+      vehicleId: String(jobCard.vehicleId),
+      workPerformed: jobCard.workPerformed,
+      laborCost: String(jobCard.laborCost),
+      partsCost: String(jobCard.partsCost),
       invoiceDate: getTodayInputValue(),
       dueDate: getTodayInputValue(),
       taxPercentage,
@@ -3377,7 +3448,7 @@ export default function Home() {
     setInvoiceForm(emptyInvoiceForm);
   };
 
-  const getInvoiceValidationErrorKey = (jobCard: JobCard) => {
+  const getInvoiceValidationErrorKey = (laborCost: number, partsCost: number) => {
     const discountValidation = validateOptionalNonNegativeAmount(
       invoiceForm.discount,
       "discount",
@@ -3397,8 +3468,8 @@ export default function Home() {
     }
 
     const calculations = getInvoiceCalculations(
-      jobCard.laborCost,
-      jobCard.partsCost,
+      laborCost,
+      partsCost,
       discountValidation.value,
       taxValidation.value,
       0,
@@ -3415,7 +3486,7 @@ export default function Home() {
     const customer = customers.find((customerRecord) => customerRecord.id === jobCard.customerId);
     const discount = parsePositiveNumber(invoiceForm.discount);
     const taxPercentage = parsePositiveNumber(invoiceForm.taxPercentage);
-    const paidAmount = parsePositiveNumber(invoiceForm.paidAmount);
+    const paidAmount = roundMoney(parsePositiveNumber(invoiceForm.paidAmount));
     const calculations = getInvoiceCalculations(
       jobCard.laborCost,
       jobCard.partsCost,
@@ -3428,6 +3499,8 @@ export default function Home() {
       invoiceNumber: existingInvoice?.invoiceNumber ?? getNextInvoiceNumber(),
       invoiceDate: invoiceForm.invoiceDate,
       dueDate: invoiceForm.dueDate,
+      customerId: jobCard.customerId,
+      vehicleId: jobCard.vehicleId,
       customerName: jobCard.customerName,
       customerPhone: customer?.phone ?? "",
       vehicle: jobCard.vehicleLabel,
@@ -3474,47 +3547,244 @@ export default function Home() {
     };
   };
 
+  const buildQuickInvoiceValues = (
+    customer: Customer,
+    vehicle: Vehicle | undefined,
+    existingInvoice?: Invoice,
+  ) => {
+    const laborCost = parsePositiveNumber(invoiceForm.laborCost);
+    const partsCost = parsePositiveNumber(invoiceForm.partsCost);
+    const discount = parsePositiveNumber(invoiceForm.discount);
+    const taxPercentage = parsePositiveNumber(invoiceForm.taxPercentage);
+    const paidAmount = roundMoney(parsePositiveNumber(invoiceForm.paidAmount));
+    const calculations = getInvoiceCalculations(
+      laborCost,
+      partsCost,
+      discount,
+      taxPercentage,
+      paidAmount,
+    );
+    const vehicleLabel = vehicle
+      ? `${vehicle.make} ${vehicle.model}`.trim()
+      : invoiceForm.vehicleId === "__new"
+        ? `${invoiceForm.vehicleMake.trim()} ${invoiceForm.vehicleModel.trim()}`.trim()
+        : "";
+    const plateNumber = vehicle
+      ? vehicle.plateNumber
+      : invoiceForm.vehicleId === "__new"
+        ? invoiceForm.vehiclePlateNumber.trim()
+        : "";
+
+    return {
+      invoiceNumber: existingInvoice?.invoiceNumber ?? getNextInvoiceNumber(),
+      invoiceDate: invoiceForm.invoiceDate,
+      dueDate: invoiceForm.dueDate,
+      customerId: customer.id,
+      vehicleId: vehicle?.id,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      vehicle: vehicleLabel || t("common.notAvailable"),
+      plateNumber: plateNumber || t("common.notAvailable"),
+      jobCardId: 0,
+      jobCardNumber: t("invoices.form.quickInvoiceLabel"),
+      jobDate: invoiceForm.invoiceDate,
+      workPerformed: invoiceForm.workPerformed.trim(),
+      parts:
+        partsCost > 0
+          ? [
+              {
+                rowId: `quick-parts-${existingInvoice?.id ?? Date.now()}`,
+                itemName: t("invoices.form.manualPartsItem"),
+                arabicItemName: "",
+                sku: "",
+                quantity: 1,
+                unitSellingPrice: partsCost,
+                lineTotal: partsCost,
+              },
+            ]
+          : [],
+      laborCost,
+      partsCost,
+      subtotal: calculations.subtotal,
+      discount,
+      taxPercentage,
+      taxAmount: calculations.taxAmount,
+      grandTotal: calculations.grandTotal,
+      paidAmount,
+      remainingBalance: calculations.remainingBalance,
+      paymentStatus: calculations.paymentStatus,
+      notes: invoiceForm.notes.trim(),
+    };
+  };
+
   const saveInvoice = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const logInvoiceSaveFailure = (translationKey: string, details?: unknown) => {
+      console.warn("[CAR DC9] Invoice save blocked", { translationKey, details });
+      showToast(translationKey);
+    };
 
-    const selectedJobCard = jobCards.find(
-      (jobCard) => jobCard.id === Number(invoiceForm.jobCardId),
+    const selectedJobCard =
+      invoiceForm.invoiceType === "jobCard"
+        ? jobCards.find((jobCard) => jobCard.id === Number(invoiceForm.jobCardId))
+        : undefined;
+
+    if (invoiceForm.invoiceType === "jobCard" && !selectedJobCard) {
+      logInvoiceSaveFailure("toast.invoiceJobCardRequired", {
+        invoiceType: invoiceForm.invoiceType,
+      });
+      return;
+    }
+
+    if (selectedJobCard && selectedJobCard.status !== "completed") {
+      logInvoiceSaveFailure("toast.invoiceJobCardRequired", {
+        jobCardId: selectedJobCard.id,
+        status: selectedJobCard.status,
+      });
+      return;
+    }
+
+    if (
+      selectedJobCard &&
+      hasActiveInvoiceForJobCard(selectedJobCard.id, editingInvoiceId ?? undefined)
+    ) {
+      logInvoiceSaveFailure("toast.duplicateActiveInvoice", {
+        jobCardId: selectedJobCard.id,
+      });
+      return;
+    }
+
+    if (!invoiceForm.invoiceDate || !invoiceForm.dueDate) {
+      logInvoiceSaveFailure("toast.invoiceDatesRequired", {
+        invoiceDate: invoiceForm.invoiceDate,
+        dueDate: invoiceForm.dueDate,
+      });
+      return;
+    }
+
+    const laborCostForValidation = selectedJobCard
+      ? selectedJobCard.laborCost
+      : parsePositiveNumber(invoiceForm.laborCost);
+    const partsCostForValidation = selectedJobCard
+      ? selectedJobCard.partsCost
+      : parsePositiveNumber(invoiceForm.partsCost);
+    const validationErrorKey = getInvoiceValidationErrorKey(
+      laborCostForValidation,
+      partsCostForValidation,
     );
 
-    if (!selectedJobCard || selectedJobCard.status !== "completed") {
-      return;
-    }
-
-    if (hasActiveInvoiceForJobCard(selectedJobCard.id, editingInvoiceId ?? undefined)) {
-      showToast("toast.duplicateActiveInvoice");
-      return;
-    }
-
-    const validationErrorKey = getInvoiceValidationErrorKey(selectedJobCard);
-
     if (validationErrorKey) {
-      showToast(validationErrorKey);
+      logInvoiceSaveFailure(validationErrorKey, {
+        laborCost: laborCostForValidation,
+        partsCost: partsCostForValidation,
+        discount: invoiceForm.discount,
+        taxPercentage: invoiceForm.taxPercentage,
+        paidAmount: invoiceForm.paidAmount,
+      });
+      return;
+    }
+
+    const discountForValidation = parsePositiveNumber(invoiceForm.discount);
+    const taxPercentageForValidation = parsePositiveNumber(invoiceForm.taxPercentage);
+    const paidAmountForValidation = parsePositiveNumber(invoiceForm.paidAmount);
+    const invoiceValidationTotals = getInvoiceCalculations(
+      laborCostForValidation,
+      partsCostForValidation,
+      discountForValidation,
+      taxPercentageForValidation,
+      paidAmountForValidation,
+    );
+
+    if (invoiceValidationTotals.grandTotal <= 0) {
+      logInvoiceSaveFailure("toast.invoiceAmountRequired", {
+        grandTotal: invoiceValidationTotals.grandTotal,
+        laborCost: laborCostForValidation,
+        partsCost: partsCostForValidation,
+        discount: discountForValidation,
+      });
+      return;
+    }
+
+    if (!selectedJobCard && laborCostForValidation + partsCostForValidation <= 0) {
+      logInvoiceSaveFailure("toast.invoiceAmountRequired", {
+        laborCost: laborCostForValidation,
+        partsCost: partsCostForValidation,
+      });
       return;
     }
 
     if (editingInvoiceId) {
       const existingInvoice = invoices.find((invoice) => invoice.id === editingInvoiceId);
-      const invoiceValues = buildInvoiceValues(selectedJobCard, existingInvoice);
 
       if (!existingInvoice) {
+        console.warn("[CAR DC9] Invoice save blocked", {
+          reason: "missing existing invoice",
+          editingInvoiceId,
+        });
         return;
       }
 
+      if (!selectedJobCard && existingInvoice.jobCardId === 0) {
+        const paidValidation = validatePaidAmount(
+          invoiceForm.paidAmount,
+          existingInvoice.grandTotal,
+        );
+
+        if (paidValidation.errorKey || paidValidation.value === null) {
+          logInvoiceSaveFailure(paidValidation.errorKey, {
+            paidAmount: invoiceForm.paidAmount,
+            grandTotal: existingInvoice.grandTotal,
+          });
+          return;
+        }
+
+        const roundedPaidAmount = roundMoney(paidValidation.value);
+        setInvoices((currentInvoices) =>
+          currentInvoices.map((invoice) =>
+            invoice.id === editingInvoiceId
+              ? {
+                  ...invoice,
+                  paidAmount: roundedPaidAmount,
+                  remainingBalance: roundMoney(
+                    Math.max(0, existingInvoice.grandTotal - roundedPaidAmount),
+                  ),
+                  paymentStatus: getPaymentStatusFromAmounts(
+                    roundedPaidAmount,
+                    existingInvoice.grandTotal,
+                  ),
+                  notes: invoiceForm.notes.trim(),
+                }
+              : invoice,
+          ),
+        );
+        console.info("[CAR DC9] Invoice save succeeded", {
+          invoiceId: editingInvoiceId,
+          mode: "quick-payment-update",
+        });
+        closeInvoiceModal();
+        return;
+      }
+
+      if (!selectedJobCard) {
+        logInvoiceSaveFailure("toast.invoiceJobCardRequired");
+        return;
+      }
+
+      const invoiceValues = buildInvoiceValues(selectedJobCard, existingInvoice);
       const paidValidation = validatePaidAmount(
         invoiceForm.paidAmount,
         existingInvoice.grandTotal,
       );
 
       if (paidValidation.errorKey || paidValidation.value === null) {
-        showToast(paidValidation.errorKey);
+        logInvoiceSaveFailure(paidValidation.errorKey, {
+          paidAmount: invoiceForm.paidAmount,
+          grandTotal: existingInvoice.grandTotal,
+        });
         return;
       }
 
+      const roundedPaidAmount = roundMoney(paidValidation.value);
       setInvoices((currentInvoices) =>
         currentInvoices.map((invoice) =>
           invoice.id === editingInvoiceId
@@ -3525,35 +3795,123 @@ export default function Home() {
                 partsCost: existingInvoice.partsCost,
                 parts: existingInvoice.parts,
                 subtotal: existingInvoice.subtotal,
-                paidAmount: paidValidation.value,
+                paidAmount: roundedPaidAmount,
                 discount: existingInvoice.discount,
                 taxPercentage: existingInvoice.taxPercentage,
                 taxAmount: existingInvoice.taxAmount,
                 grandTotal: existingInvoice.grandTotal,
-                remainingBalance: Math.max(
-                  0,
-                  existingInvoice.grandTotal - paidValidation.value,
+                remainingBalance: roundMoney(
+                  Math.max(0, existingInvoice.grandTotal - roundedPaidAmount),
                 ),
                 paymentStatus: getPaymentStatusFromAmounts(
-                  paidValidation.value,
+                  roundedPaidAmount,
                   existingInvoice.grandTotal,
                 ),
               }
             : invoice,
         ),
       );
+      console.info("[CAR DC9] Invoice save succeeded", {
+        invoiceId: editingInvoiceId,
+        mode: "job-card-payment-update",
+      });
       closeInvoiceModal();
       return;
     }
 
-    const invoiceValues = buildInvoiceValues(selectedJobCard);
+    let invoiceValues: Omit<Invoice, "id" | "archived">;
+
+    if (selectedJobCard) {
+      invoiceValues = buildInvoiceValues(selectedJobCard);
+    } else {
+      let invoiceCustomer = customers.find(
+        (customer) => customer.id === Number(invoiceForm.customerId),
+      );
+      const normalizedPhone = normalizeSaudiPhone(invoiceForm.customerPhone);
+
+      if (!invoiceCustomer) {
+        if (!invoiceForm.customerName.trim()) {
+          logInvoiceSaveFailure("toast.invoiceCustomerRequired");
+          return;
+        }
+
+        if (!isValidSaudiPhone(normalizedPhone)) {
+          logInvoiceSaveFailure("toast.phoneInvalid", {
+            customerPhone: invoiceForm.customerPhone,
+            normalizedPhone,
+          });
+          return;
+        }
+
+        invoiceCustomer = customers.find(
+          (customer) => normalizeSaudiPhone(customer.phone) === normalizedPhone,
+        );
+
+        if (!invoiceCustomer) {
+          invoiceCustomer = {
+            id: createRecordId(),
+            name: invoiceForm.customerName.trim(),
+            phone: normalizedPhone,
+            city: invoiceForm.customerCity.trim(),
+            type: "new",
+            notes: "",
+            archived: false,
+          };
+          setCustomers((currentCustomers) => [invoiceCustomer as Customer, ...currentCustomers]);
+        }
+      }
+
+      let invoiceVehicle =
+        invoiceForm.vehicleId && invoiceForm.vehicleId !== "__new"
+          ? vehicles.find((vehicle) => vehicle.id === Number(invoiceForm.vehicleId))
+          : undefined;
+
+      if (invoiceForm.vehicleId === "__new") {
+        if (
+          !invoiceForm.vehiclePlateNumber.trim() ||
+          !invoiceForm.vehicleMake.trim() ||
+          !invoiceForm.vehicleModel.trim()
+        ) {
+          logInvoiceSaveFailure("toast.invoiceVehicleRequired");
+          return;
+        }
+
+        invoiceVehicle = {
+          id: createRecordId(),
+          customerId: invoiceCustomer.id,
+          ownerName: invoiceCustomer.name,
+          plateNumber: invoiceForm.vehiclePlateNumber.trim(),
+          make: invoiceForm.vehicleMake.trim(),
+          model: invoiceForm.vehicleModel.trim(),
+          year: invoiceForm.vehicleYear.trim(),
+          colorKey: invoiceForm.vehicleColor.trim(),
+          vehicleTypeKey: invoiceForm.vehicleType.trim(),
+          notes: "",
+          archived: false,
+        };
+        setVehicles((currentVehicles) => [invoiceVehicle as Vehicle, ...currentVehicles]);
+      }
+
+      invoiceValues = buildQuickInvoiceValues(invoiceCustomer, invoiceVehicle);
+    }
+
     const nextInvoice: Invoice = {
-      id: Date.now(),
+      id: createRecordId(),
       ...invoiceValues,
       archived: false,
     };
 
     setInvoices((currentInvoices) => [nextInvoice, ...currentInvoices]);
+    console.info("[CAR DC9] Invoice save succeeded", {
+      invoiceId: nextInvoice.id,
+      invoiceNumber: nextInvoice.invoiceNumber,
+      mode: selectedJobCard ? "job-card" : "quick",
+      customerId: nextInvoice.customerId,
+      vehicleId: nextInvoice.vehicleId,
+      grandTotal: nextInvoice.grandTotal,
+      paidAmount: nextInvoice.paidAmount,
+      remainingBalance: nextInvoice.remainingBalance,
+    });
     closeInvoiceModal();
   };
 
@@ -4045,6 +4403,7 @@ export default function Home() {
                 customerPhoneError={customerPhoneError}
                 customerSearch={customerSearch}
                 customers={filteredCustomers}
+                invoices={invoices}
                 formatDate={formatDate}
                 formatMoney={formatMoney}
                 formatNumber={formatNumber}
@@ -4194,6 +4553,7 @@ export default function Home() {
                 <InvoicesSection
                   activeTab={invoiceTab}
                   availableJobCards={getCompletedJobCardsForInvoice()}
+                  customers={customers}
                   formatDate={formatDate}
                   formatPhone={formatPhone}
                   formatMoney={formatMoney}
@@ -4213,6 +4573,7 @@ export default function Home() {
                   onTabChange={setInvoiceTab}
                   onUpdateForm={setInvoiceForm}
                   t={t}
+                  vehicles={vehicles}
                 />
               </>
             ) : activeSection === "reports" ? (
@@ -4501,6 +4862,7 @@ function CustomersSection({
   customerPhoneError,
   customerSearch,
   customers,
+  invoices,
   formatDate,
   formatPhone,
   formatMoney,
@@ -4523,6 +4885,7 @@ function CustomersSection({
   customerPhoneError: boolean;
   customerSearch: string;
   customers: Customer[];
+  invoices: Invoice[];
   formatDate: (value: string) => string;
   formatPhone: (value: string) => string;
   formatMoney: (value: number) => string;
@@ -4595,10 +4958,16 @@ function CustomersSection({
           {customers.map((customer) => {
             const customerVehicles = getCustomerVehicles(customer.id);
             const customerJobs = getCustomerJobs(customer.id);
+            const customerInvoices = invoices.filter(
+              (invoice) =>
+                !invoice.archived &&
+                (invoice.customerId === customer.id ||
+                  (!invoice.customerId && invoice.customerName === customer.name)),
+            );
             const lastCustomerJob = customerJobs.toSorted((firstJob, secondJob) =>
               secondJob.date.localeCompare(firstJob.date),
             )[0];
-            const outstandingBalance = customerJobs
+            const jobOutstandingBalance = customerJobs
               .filter((jobCard) => jobCard.status !== "completed")
               .filter((jobCard) => jobCard.paymentStatus !== "paid")
               .reduce(
@@ -4607,6 +4976,11 @@ function CustomersSection({
                   Math.max(0, jobCard.laborCost + jobCard.partsCost - jobCard.paidAmount),
                 0,
               );
+            const invoiceOutstandingBalance = customerInvoices.reduce(
+              (total, invoice) => total + Math.max(0, invoice.remainingBalance),
+              0,
+            );
+            const outstandingBalance = jobOutstandingBalance + invoiceOutstandingBalance;
 
             return (
               <article
@@ -5896,7 +6270,6 @@ function JobCardModal({
                 value={jobCardForm.complaint}
                 onChange={(value) => onUpdateForm({ ...jobCardForm, complaint: value })}
                 placeholder={t("jobCards.form.complaintPlaceholder")}
-                required
               />
 
               <FormField
@@ -5904,7 +6277,6 @@ function JobCardModal({
                 value={jobCardForm.mechanic}
                 onChange={(value) => onUpdateForm({ ...jobCardForm, mechanic: value })}
                 placeholder={t("jobCards.form.mechanicPlaceholder")}
-                required
               />
 
               <FormField
@@ -6102,6 +6474,7 @@ function JobCardModal({
                               <input
                                 type="number"
                                 min="0"
+                                step="0.01"
                                 value={partLine.quantity}
                                 onChange={(event) =>
                                   updatePartLine(partLine.rowId, {
@@ -6129,6 +6502,7 @@ function JobCardModal({
                               <input
                                 type="number"
                                 min="0"
+                                step="0.01"
                                 value={partLine.unitSellingPrice}
                                 onChange={(event) =>
                                   updatePartLine(partLine.rowId, {
@@ -6313,6 +6687,7 @@ function JobCardModal({
 function InvoicesSection({
   activeTab,
   availableJobCards,
+  customers,
   formatDate,
   formatPhone,
   formatMoney,
@@ -6332,9 +6707,11 @@ function InvoicesSection({
   onTabChange,
   onUpdateForm,
   t,
+  vehicles,
 }: {
   activeTab: RecordTab;
   availableJobCards: JobCard[];
+  customers: Customer[];
   formatDate: (value: string) => string;
   formatPhone: (value: string) => string;
   formatMoney: (value: number) => string;
@@ -6358,6 +6735,7 @@ function InvoicesSection({
   onTabChange: (value: RecordTab) => void;
   onUpdateForm: (value: InvoiceForm) => void;
   t: (key: string) => string;
+  vehicles: Vehicle[];
 }) {
   return (
     <>
@@ -6424,7 +6802,7 @@ function InvoicesSection({
                 <button type="button" onClick={() => onPrintInvoice(invoice)} className="h-10 rounded-md border border-emerald-200 px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50">
                   {t("invoices.printButton")}
                 </button>
-                {!invoice.archived ? (
+                {!invoice.archived && invoice.jobCardId > 0 ? (
                   <button type="button" onClick={() => onCorrectInvoice(invoice)} className="h-10 rounded-md border border-sky-200 px-3 text-sm font-semibold text-sky-700 transition hover:bg-sky-50">
                     {t("invoices.correctButton")}
                   </button>
@@ -6456,7 +6834,9 @@ function InvoicesSection({
       {isModalOpen ? (
         <InvoiceModal
           availableJobCards={availableJobCards}
+          customers={customers}
           formatDate={formatDate}
+          formatPhone={formatPhone}
           formatMoney={formatMoney}
           getDefaultPaidAmountFromJobCard={getDefaultPaidAmountFromJobCard}
           invoiceForm={invoiceForm}
@@ -6465,6 +6845,7 @@ function InvoicesSection({
           onSave={onSave}
           onUpdateForm={onUpdateForm}
           t={t}
+          vehicles={vehicles}
         />
       ) : null}
     </>
@@ -6553,7 +6934,9 @@ function InvoiceCorrectionModal({
 
 function InvoiceModal({
   availableJobCards,
+  customers,
   formatDate,
+  formatPhone,
   formatMoney,
   getDefaultPaidAmountFromJobCard,
   invoiceForm,
@@ -6562,9 +6945,12 @@ function InvoiceModal({
   onSave,
   onUpdateForm,
   t,
+  vehicles,
 }: {
   availableJobCards: JobCard[];
+  customers: Customer[];
   formatDate: (value: string) => string;
+  formatPhone: (value: string) => string;
   formatMoney: (value: number) => string;
   getDefaultPaidAmountFromJobCard: (
     jobCard: JobCard,
@@ -6577,17 +6963,44 @@ function InvoiceModal({
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   onUpdateForm: (value: InvoiceForm) => void;
   t: (key: string) => string;
+  vehicles: Vehicle[];
 }) {
-  const selectedJobCard = availableJobCards.find((jobCard) => jobCard.id === Number(invoiceForm.jobCardId));
+  const selectedJobCard =
+    invoiceForm.invoiceType === "jobCard"
+      ? availableJobCards.find((jobCard) => jobCard.id === Number(invoiceForm.jobCardId))
+      : undefined;
+  const selectedCustomer = customers.find(
+    (customer) => customer.id === Number(invoiceForm.customerId),
+  );
+  const customerVehicles = selectedCustomer
+    ? vehicles.filter(
+        (vehicle) =>
+          !vehicle.archived &&
+          (vehicle.customerId === selectedCustomer.id ||
+            vehicle.ownerName === selectedCustomer.name),
+      )
+    : [];
+  const selectedVehicle =
+    invoiceForm.vehicleId && invoiceForm.vehicleId !== "__new"
+      ? vehicles.find((vehicle) => vehicle.id === Number(invoiceForm.vehicleId))
+      : undefined;
   const discountValue = parseSafeNumber(invoiceForm.discount);
   const taxPercentageValue = parseSafeNumber(invoiceForm.taxPercentage);
   const paidAmountValue = parseSafeNumber(invoiceForm.paidAmount);
+  const manualLaborCostValue = parseSafeNumber(invoiceForm.laborCost);
+  const manualPartsCostValue = parseSafeNumber(invoiceForm.partsCost);
   const discount = discountValue !== null && discountValue > 0 ? discountValue : 0;
   const taxPercentage =
     taxPercentageValue !== null && taxPercentageValue > 0 ? taxPercentageValue : 0;
   const paidAmount =
     paidAmountValue !== null && paidAmountValue > 0 ? paidAmountValue : 0;
-  const subtotal = selectedJobCard ? selectedJobCard.laborCost + selectedJobCard.partsCost : 0;
+  const manualLaborCost =
+    manualLaborCostValue !== null && manualLaborCostValue > 0 ? manualLaborCostValue : 0;
+  const manualPartsCost =
+    manualPartsCostValue !== null && manualPartsCostValue > 0 ? manualPartsCostValue : 0;
+  const laborCost = selectedJobCard ? selectedJobCard.laborCost : manualLaborCost;
+  const partsCost = selectedJobCard ? selectedJobCard.partsCost : manualPartsCost;
+  const subtotal = laborCost + partsCost;
   const taxAmount = subtotal * (taxPercentage / 100);
   const grandTotal = Math.max(0, subtotal + taxAmount - discount);
   const remainingBalance = Math.max(0, grandTotal - paidAmount);
@@ -6596,12 +7009,22 @@ function InvoiceModal({
   const taxPercentageErrorKey = getFinancialInputErrorKey(
     invoiceForm.taxPercentage,
   );
+  const laborCostErrorKey = selectedJobCard
+    ? null
+    : getFinancialInputErrorKey(invoiceForm.laborCost);
+  const partsCostErrorKey = selectedJobCard
+    ? null
+    : getFinancialInputErrorKey(invoiceForm.partsCost);
   const invoicePaidAmountErrorKey = getPaidAmountInputErrorKey(
     invoiceForm.paidAmount,
     grandTotal,
   );
   const hasInvoiceFinancialErrors = Boolean(
-    discountErrorKey || taxPercentageErrorKey || invoicePaidAmountErrorKey,
+    discountErrorKey ||
+      taxPercentageErrorKey ||
+      laborCostErrorKey ||
+      partsCostErrorKey ||
+      invoicePaidAmountErrorKey,
   );
   const getPaidAmountForStatus = (
     status: PaymentStatus,
@@ -6668,6 +7091,35 @@ function InvoiceModal({
             : "partial",
     });
   };
+  const updateQuickInvoiceAmount = (
+    nextValues: Partial<Pick<InvoiceForm, "laborCost" | "partsCost">>,
+  ) => {
+    if (isEditing || selectedJobCard) {
+      return;
+    }
+
+    const nextLaborValue = parseSafeNumber(nextValues.laborCost ?? invoiceForm.laborCost);
+    const nextPartsValue = parseSafeNumber(nextValues.partsCost ?? invoiceForm.partsCost);
+    const nextLaborCost =
+      nextLaborValue !== null && nextLaborValue > 0 ? nextLaborValue : 0;
+    const nextPartsCost =
+      nextPartsValue !== null && nextPartsValue > 0 ? nextPartsValue : 0;
+    const nextSubtotal = nextLaborCost + nextPartsCost;
+    const nextTaxAmount = nextSubtotal * (taxPercentage / 100);
+    const nextGrandTotal = Math.max(0, nextSubtotal + nextTaxAmount - discount);
+    const nextPaidAmount = getPaidAmountForStatus(
+      paymentStatus,
+      paidAmount,
+      nextGrandTotal,
+    );
+
+    onUpdateForm({
+      ...invoiceForm,
+      ...nextValues,
+      paidAmount: String(nextPaidAmount),
+      paymentStatus: getPaymentStatusFromAmounts(nextPaidAmount, nextGrandTotal),
+    });
+  };
   const updateInvoicePaymentStatus = (status: PaymentStatus) => {
     const nextPaidAmount =
       status === "paid"
@@ -6703,14 +7155,63 @@ function InvoiceModal({
     onUpdateForm({
       ...invoiceForm,
       jobCardId,
+      workPerformed: nextJobCard ? nextJobCard.workPerformed : invoiceForm.workPerformed,
+      laborCost: nextJobCard ? String(nextJobCard.laborCost) : invoiceForm.laborCost,
+      partsCost: nextJobCard ? String(nextJobCard.partsCost) : invoiceForm.partsCost,
       paidAmount: String(defaultPaidAmount),
       paymentStatus: getPaymentStatusFromAmounts(defaultPaidAmount, nextGrandTotal),
+    });
+  };
+  const updateInvoiceType = (invoiceType: InvoiceForm["invoiceType"]) => {
+    if (isEditing) {
+      return;
+    }
+
+    onUpdateForm({
+      ...invoiceForm,
+      invoiceType,
+      jobCardId: "",
+      workPerformed: invoiceType === "quick" ? "" : invoiceForm.workPerformed,
+      laborCost: invoiceType === "quick" ? "" : invoiceForm.laborCost,
+      partsCost: invoiceType === "quick" ? "" : invoiceForm.partsCost,
+      paidAmount: "0",
+      paymentStatus: "unpaid",
+    });
+  };
+  const updateSelectedCustomer = (customerId: string) => {
+    const nextCustomer = customers.find((customer) => customer.id === Number(customerId));
+
+    onUpdateForm({
+      ...invoiceForm,
+      customerId,
+      customerName: nextCustomer?.name ?? "",
+      customerPhone: nextCustomer?.phone ?? "",
+      customerCity: nextCustomer?.city ?? "",
+      vehicleId: "",
+    });
+  };
+  const updateSelectedVehicle = (vehicleId: string) => {
+    const nextVehicle = vehicles.find((vehicle) => vehicle.id === Number(vehicleId));
+
+    onUpdateForm({
+      ...invoiceForm,
+      vehicleId,
+      vehiclePlateNumber: vehicleId === "__new" ? "" : nextVehicle?.plateNumber ?? "",
+      vehicleMake: vehicleId === "__new" ? "" : nextVehicle?.make ?? "",
+      vehicleModel: vehicleId === "__new" ? "" : nextVehicle?.model ?? "",
+      vehicleYear: vehicleId === "__new" ? "" : nextVehicle?.year ?? "",
+      vehicleColor: vehicleId === "__new" ? "" : nextVehicle?.colorKey ?? "",
+      vehicleType: vehicleId === "__new" ? "" : nextVehicle?.vehicleTypeKey ?? "",
     });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/40 px-4 py-4">
-      <form onSubmit={onSave} className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-w-4xl">
+      <form
+        onSubmit={onSave}
+        noValidate
+        className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-w-4xl"
+      >
         <div className="shrink-0 border-b border-slate-100 p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -6728,20 +7229,36 @@ function InvoiceModal({
         <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-28">
           <div className="grid gap-4">
             <label className="block">
-              <span className="text-sm font-medium text-slate-700">{t("invoices.fields.jobCardNumber")}</span>
+              <span className="text-sm font-medium text-slate-700">{t("invoices.form.invoiceType")}</span>
               <select
-                value={invoiceForm.jobCardId}
-                onChange={(event) => updateSelectedJobCard(event.target.value)}
+                value={invoiceForm.invoiceType}
+                onChange={(event) =>
+                  updateInvoiceType(event.target.value as InvoiceForm["invoiceType"])
+                }
                 disabled={isEditing}
-                required
                 className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 disabled:bg-slate-100"
               >
-                <option value="">{t("invoices.form.jobCardPlaceholder")}</option>
-                {availableJobCards.map((jobCard) => (
-                  <option key={jobCard.id} value={jobCard.id}>{jobCard.jobNumber} - {jobCard.customerName} - {jobCard.plateNumber}</option>
-                ))}
+                <option value="quick">{t("invoices.form.quickInvoiceType")}</option>
+                <option value="jobCard">{t("invoices.form.jobCardInvoiceType")}</option>
               </select>
             </label>
+
+            {invoiceForm.invoiceType === "jobCard" ? (
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">{t("invoices.fields.jobCardNumber")}</span>
+                <select
+                  value={invoiceForm.jobCardId}
+                  onChange={(event) => updateSelectedJobCard(event.target.value)}
+                  disabled={isEditing}
+                  className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 disabled:bg-slate-100"
+                >
+                  <option value="">{t("invoices.form.jobCardPlaceholder")}</option>
+                  {availableJobCards.map((jobCard) => (
+                    <option key={jobCard.id} value={jobCard.id}>{jobCard.jobNumber} - {jobCard.customerName} - {jobCard.plateNumber}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
 
             {selectedJobCard ? (
               <section className="grid gap-4 rounded-lg bg-slate-50 p-4 sm:grid-cols-3">
@@ -6752,14 +7269,187 @@ function InvoiceModal({
                 <CustomerField label={t("invoices.fields.workPerformed")} value={selectedJobCard.workPerformed} />
                 <CustomerField label={t("invoices.fields.subtotal")} value={formatMoney(subtotal)} />
               </section>
+            ) : invoiceForm.invoiceType === "quick" ? (
+              <>
+                <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      {t("invoices.form.customerSection")}
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {t("invoices.form.quickSubtitle")}
+                    </p>
+                  </div>
+                  <label className="block sm:col-span-2">
+                    <span className="text-sm font-medium text-slate-700">
+                      {t("invoices.form.selectCustomer")}
+                    </span>
+                    <select
+                      value={invoiceForm.customerId}
+                      onChange={(event) => updateSelectedCustomer(event.target.value)}
+                      disabled={isEditing}
+                      className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 disabled:bg-slate-100"
+                    >
+                      <option value="">{t("invoices.form.newCustomerOption")}</option>
+                      {customers.filter((customer) => !customer.archived).map((customer) => (
+                        <option key={customer.id} value={customer.id}>
+                          {customer.name} - {formatPhone(customer.phone)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {selectedCustomer ? (
+                    <section className="grid gap-3 rounded-lg bg-slate-50 p-3 sm:col-span-2 sm:grid-cols-3">
+                      <CustomerField label={t("invoices.fields.customerName")} value={selectedCustomer.name} />
+                      <CustomerField label={t("invoices.fields.customerPhone")} value={formatPhone(selectedCustomer.phone)} />
+                      <CustomerField label={t("customers.fields.city")} value={selectedCustomer.city || t("common.notAvailable")} />
+                    </section>
+                  ) : (
+                    <>
+                      <FormField
+                        label={t("invoices.fields.customerName")}
+                        value={invoiceForm.customerName}
+                        onChange={(value) => onUpdateForm({ ...invoiceForm, customerName: value })}
+                        placeholder={t("customers.form.namePlaceholder")}
+                        required
+                        disabled={isEditing}
+                      />
+                      <PhoneField
+                        label={t("invoices.fields.customerPhone")}
+                        value={formatPhone(invoiceForm.customerPhone)}
+                        onChange={(value) =>
+                          onUpdateForm({
+                            ...invoiceForm,
+                            customerPhone: normalizeSaudiPhone(value) || value,
+                          })
+                        }
+                        placeholder={t("customers.form.phonePlaceholder")}
+                        required
+                      />
+                      <FormField
+                        label={t("customers.fields.city")}
+                        value={invoiceForm.customerCity}
+                        onChange={(value) => onUpdateForm({ ...invoiceForm, customerCity: value })}
+                        placeholder={t("customers.form.cityPlaceholder")}
+                        disabled={isEditing}
+                      />
+                    </>
+                  )}
+                </section>
+
+                <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      {t("invoices.form.vehicleSection")}
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {t("invoices.form.vehicleOptional")}
+                    </p>
+                  </div>
+                  <label className="block sm:col-span-2">
+                    <span className="text-sm font-medium text-slate-700">
+                      {t("invoices.form.selectVehicle")}
+                    </span>
+                    <select
+                      value={invoiceForm.vehicleId}
+                      onChange={(event) => updateSelectedVehicle(event.target.value)}
+                      disabled={isEditing}
+                      className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600 disabled:bg-slate-100"
+                    >
+                      <option value="">{t("invoices.form.noVehicleOption")}</option>
+                      <option value="__new">{t("invoices.form.newVehicleOption")}</option>
+                      {customerVehicles.map((vehicle) => (
+                        <option key={vehicle.id} value={vehicle.id}>
+                          {vehicle.plateNumber} - {vehicle.make} {vehicle.model}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {selectedVehicle ? (
+                    <section className="grid gap-3 rounded-lg bg-slate-50 p-3 sm:col-span-2 sm:grid-cols-3">
+                      <CustomerField label={t("invoices.fields.vehicle")} value={`${selectedVehicle.make} ${selectedVehicle.model}`} />
+                      <CustomerField label={t("invoices.fields.plateNumber")} value={selectedVehicle.plateNumber} />
+                      <CustomerField label={t("vehicles.fields.year")} value={selectedVehicle.year || t("common.notAvailable")} />
+                    </section>
+                  ) : invoiceForm.vehicleId === "__new" ? (
+                    <>
+                      <FormField
+                        label={t("vehicles.fields.plateNumber")}
+                        value={invoiceForm.vehiclePlateNumber}
+                        onChange={(value) => onUpdateForm({ ...invoiceForm, vehiclePlateNumber: value })}
+                        placeholder={t("vehicles.form.platePlaceholder")}
+                        required
+                        disabled={isEditing}
+                      />
+                      <FormField
+                        label={t("vehicles.fields.make")}
+                        value={invoiceForm.vehicleMake}
+                        onChange={(value) => onUpdateForm({ ...invoiceForm, vehicleMake: value })}
+                        placeholder={t("vehicles.form.makePlaceholder")}
+                        required
+                        disabled={isEditing}
+                      />
+                      <FormField
+                        label={t("vehicles.fields.model")}
+                        value={invoiceForm.vehicleModel}
+                        onChange={(value) => onUpdateForm({ ...invoiceForm, vehicleModel: value })}
+                        placeholder={t("vehicles.form.modelPlaceholder")}
+                        required
+                        disabled={isEditing}
+                      />
+                      <FormField
+                        label={t("vehicles.fields.year")}
+                        value={invoiceForm.vehicleYear}
+                        onChange={(value) => onUpdateForm({ ...invoiceForm, vehicleYear: value })}
+                        placeholder={t("vehicles.form.yearPlaceholder")}
+                        disabled={isEditing}
+                      />
+                    </>
+                  ) : null}
+                </section>
+
+                <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
+                  <FormField
+                    label={t("invoices.fields.workPerformed")}
+                    value={invoiceForm.workPerformed}
+                    onChange={(value) => onUpdateForm({ ...invoiceForm, workPerformed: value })}
+                    placeholder={t("invoices.form.workPerformedPlaceholder")}
+                    disabled={isEditing}
+                  />
+                  <FormField
+                    inputType="number"
+                    label={t("invoices.fields.laborCost")}
+                    min="0"
+                    step="0.01"
+                    value={invoiceForm.laborCost}
+                    onChange={(value) => updateQuickInvoiceAmount({ laborCost: value })}
+                    placeholder={t("jobCards.form.laborCostPlaceholder")}
+                    error={laborCostErrorKey ? t(laborCostErrorKey) : undefined}
+                    disabled={isEditing}
+                  />
+                  <FormField
+                    inputType="number"
+                    label={t("invoices.fields.partsCost")}
+                    min="0"
+                    step="0.01"
+                    value={invoiceForm.partsCost}
+                    onChange={(value) => updateQuickInvoiceAmount({ partsCost: value })}
+                    placeholder={t("invoices.form.partsCostPlaceholder")}
+                    error={partsCostErrorKey ? t(partsCostErrorKey) : undefined}
+                    disabled={isEditing}
+                  />
+                </section>
+              </>
             ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField inputType="date" label={t("invoices.fields.invoiceDate")} value={invoiceForm.invoiceDate} onChange={(value) => onUpdateForm({ ...invoiceForm, invoiceDate: value })} placeholder={t("invoices.form.invoiceDatePlaceholder")} required />
               <FormField inputType="date" label={t("invoices.fields.dueDate")} value={invoiceForm.dueDate} onChange={(value) => onUpdateForm({ ...invoiceForm, dueDate: value })} placeholder={t("invoices.form.dueDatePlaceholder")} required />
-              <FormField inputType="number" label={t("invoices.fields.discount")} min="0" value={invoiceForm.discount} onChange={(value) => updateInvoiceTotalInput({ discount: value })} placeholder={t("invoices.form.discountPlaceholder")} error={discountErrorKey ? t(discountErrorKey) : undefined} disabled={isEditing} />
+              <FormField inputType="number" label={t("invoices.fields.discount")} min="0" step="0.01" value={invoiceForm.discount} onChange={(value) => updateInvoiceTotalInput({ discount: value })} placeholder={t("invoices.form.discountPlaceholder")} error={discountErrorKey ? t(discountErrorKey) : undefined} disabled={isEditing} />
               <PercentField label={t("invoices.fields.taxPercentage")} value={invoiceForm.taxPercentage} onChange={(value) => updateInvoiceTotalInput({ taxPercentage: value })} placeholder={t("invoices.form.taxPercentagePlaceholder")} error={taxPercentageErrorKey ? t(taxPercentageErrorKey) : undefined} disabled={isEditing} />
-              <FormField inputType="number" label={t("invoices.fields.paidAmount")} min="0" value={invoiceForm.paidAmount} onChange={updateInvoicePaidAmount} placeholder={t("invoices.form.paidPlaceholder")} error={invoicePaidAmountErrorKey ? t(invoicePaidAmountErrorKey) : undefined} />
+              <FormField inputType="number" label={t("invoices.fields.paidAmount")} min="0" step="0.01" value={invoiceForm.paidAmount} onChange={updateInvoicePaidAmount} placeholder={t("invoices.form.paidPlaceholder")} error={invoicePaidAmountErrorKey ? t(invoicePaidAmountErrorKey) : undefined} />
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">{t("invoices.fields.paymentStatus")}</span>
                 <select value={paymentStatus} onChange={(event) => updateInvoicePaymentStatus(event.target.value as PaymentStatus)} className="mt-1 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-emerald-600">
@@ -8502,6 +9192,7 @@ function PurchaseModal({
                               <input
                                 type="number"
                                 min="0"
+                                step="0.01"
                                 value={itemLine.quantity}
                                 onChange={(event) =>
                                   updateItemLine(itemLine.rowId, {
@@ -8528,6 +9219,7 @@ function PurchaseModal({
                               <input
                                 type="number"
                                 min="0"
+                                step="0.01"
                                 value={itemLine.costPrice}
                                 onChange={(event) =>
                                   updateItemLine(itemLine.rowId, {
@@ -9143,6 +9835,7 @@ function FormField({
   onChange,
   placeholder,
   required,
+  step,
   value,
 }: {
   disabled?: boolean;
@@ -9153,6 +9846,7 @@ function FormField({
   onChange: (value: string) => void;
   placeholder: string;
   required?: boolean;
+  step?: string;
   value: string;
 }) {
   return (
@@ -9161,6 +9855,7 @@ function FormField({
       <input
         type={inputType}
         min={min}
+        step={step ?? (inputType === "number" ? "0.01" : undefined)}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
@@ -9228,6 +9923,7 @@ function PercentField({
   label,
   onChange,
   placeholder,
+  step = "0.01",
   value,
 }: {
   disabled?: boolean;
@@ -9235,6 +9931,7 @@ function PercentField({
   label: string;
   onChange: (value: string) => void;
   placeholder: string;
+  step?: string;
   value: string;
 }) {
   return (
@@ -9246,6 +9943,7 @@ function PercentField({
         <input
           type="number"
           min="0"
+          step={step}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
