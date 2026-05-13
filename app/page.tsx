@@ -409,7 +409,7 @@ const dashboardFinancialCardDefinitions = [
 
 const dashboardOperationsCardDefinitions = [
   { key: "activeJobs", translationKey: "cards.activeJobs" },
-  { key: "pendingPayments", translationKey: "cards.pendingPayments" },
+  { key: "pendingPayments", translationKey: "cards.pendingPayments", currency: true },
   { key: "lowStockItems", translationKey: "cards.lowStockItems" },
 ] as const;
 
@@ -1057,6 +1057,17 @@ const getDefaultDemoData = (): DemoPersistedData => ({
   settings: defaultWorkshopSettings,
 });
 
+const backupDataKeys = [
+  "customers",
+  "vehicles",
+  "jobCards",
+  "inventoryItems",
+  "purchases",
+  "expenses",
+  "invoices",
+  "settings",
+];
+
 const isSectionKey = (value: string): value is SectionKey =>
   navigationItems.some((item) => item.key === value);
 
@@ -1235,6 +1246,11 @@ const getSaudiLocalDigits = (value: unknown) => {
 
 const normalizeSaudiPhone = (value: unknown) => {
   const rawValue = getSafeString(value).trim();
+
+  if (!rawValue) {
+    return "";
+  }
+
   const compactValue = cleanSaudiPhoneInput(value);
 
   if (/^\+\d+$/.test(compactValue)) {
@@ -1331,7 +1347,35 @@ type FinancialCalculationInput = {
   isInRange: (date: string) => boolean;
 };
 
-const getFinancialCalculations = ({
+const calculatePaidRevenue = (invoices: Invoice[]) =>
+  roundMoney(invoices.reduce((total, invoice) => total + invoice.paidAmount, 0));
+
+const calculateOutstandingBalance = (invoices: Invoice[]) =>
+  roundMoney(
+    invoices.reduce((total, invoice) => total + invoice.remainingBalance, 0),
+  );
+
+const calculateRealExpenses = (expenses: Expense[], purchases: Purchase[]) => {
+  const expenseTotal = expenses.reduce(
+    (total, expense) => total + expense.amount,
+    0,
+  );
+  const purchaseTotal = purchases.reduce(
+    (total, purchase) => total + purchase.totalAmount,
+    0,
+  );
+
+  return {
+    expenseTotal: roundMoney(expenseTotal),
+    purchaseTotal: roundMoney(purchaseTotal),
+    total: roundMoney(expenseTotal + purchaseTotal),
+  };
+};
+
+const calculateNetProfit = (paidRevenue: number, realExpenses: number) =>
+  roundMoney(paidRevenue - realExpenses);
+
+const calculateFinancialSummary = ({
   expenses,
   invoices,
   isInRange,
@@ -1350,35 +1394,21 @@ const getFinancialCalculations = ({
     (total, invoice) => total + invoice.grandTotal,
     0,
   );
-  const paidRevenue = scopedInvoices.reduce(
-    (total, invoice) => total + invoice.paidAmount,
-    0,
-  );
-  const outstandingBalance = scopedInvoices.reduce(
-    (total, invoice) => total + invoice.remainingBalance,
-    0,
-  );
-  const workshopExpenses = scopedExpenses.reduce(
-    (total, expense) => total + expense.amount,
-    0,
-  );
-  const purchaseCosts = scopedPurchases.reduce(
-    (total, purchase) => total + purchase.totalAmount,
-    0,
-  );
-  const totalExpenses = workshopExpenses + purchaseCosts;
+  const paidRevenue = calculatePaidRevenue(scopedInvoices);
+  const outstandingBalance = calculateOutstandingBalance(scopedInvoices);
+  const realExpenses = calculateRealExpenses(scopedExpenses, scopedPurchases);
 
   return {
     invoices: scopedInvoices,
     expenses: scopedExpenses,
     purchases: scopedPurchases,
     invoiceGrandTotal: roundMoney(invoiceGrandTotal),
-    paidRevenue: roundMoney(paidRevenue),
-    outstandingBalance: roundMoney(outstandingBalance),
-    workshopExpenses: roundMoney(workshopExpenses),
-    purchaseCosts: roundMoney(purchaseCosts),
-    totalExpenses: roundMoney(totalExpenses),
-    netProfit: roundMoney(paidRevenue - totalExpenses),
+    paidRevenue,
+    outstandingBalance,
+    workshopExpenses: realExpenses.expenseTotal,
+    purchaseCosts: realExpenses.purchaseTotal,
+    totalExpenses: realExpenses.total,
+    netProfit: calculateNetProfit(paidRevenue, realExpenses.total),
   };
 };
 
@@ -1878,28 +1908,11 @@ export default function Home() {
       jobCard.status !== "completed" &&
       jobCard.status !== "cancelled",
   );
-  const dashboardFinancials = getFinancialCalculations({
+  const dashboardFinancials = calculateFinancialSummary({
     expenses,
     invoices,
     purchases,
     isInRange: (date) => isDateInReportRange(date, "today"),
-  });
-  const dashboardPendingInvoices = invoices.filter(
-    (invoice) =>
-      !invoice.archived &&
-      (invoice.remainingBalance > 0 || invoice.paymentStatus !== "paid"),
-  );
-  const dashboardPendingJobCards = jobCards.filter((jobCard) => {
-    if (jobCard.archived || activeInvoiceJobCardIds.has(jobCard.id)) {
-      return false;
-    }
-
-    const totalAmount = jobCard.laborCost + jobCard.partsCost;
-
-    return (
-      Math.max(0, totalAmount - jobCard.paidAmount) > 0 ||
-      jobCard.paymentStatus !== "paid"
-    );
   });
   const dashboardLowStockItems = inventoryItems.filter(
     (item) => !item.archived && item.stockQuantity <= item.minimumStock,
@@ -1909,7 +1922,7 @@ export default function Home() {
     todaysRevenue: dashboardFinancials.paidRevenue,
     todayExpenses: dashboardFinancials.totalExpenses,
     todayProfit: dashboardFinancials.netProfit,
-    pendingPayments: dashboardPendingInvoices.length + dashboardPendingJobCards.length,
+    pendingPayments: dashboardFinancials.outstandingBalance,
     lowStockItems: dashboardLowStockItems.length,
   };
   const dashboardFinancialCards = dashboardFinancialCardDefinitions.map((card) => ({
@@ -1920,7 +1933,7 @@ export default function Home() {
     ...card,
     value: dashboardStats[card.key],
   }));
-  const reportFinancials = getFinancialCalculations({
+  const reportFinancials = calculateFinancialSummary({
     expenses,
     invoices,
     purchases,
@@ -2457,9 +2470,10 @@ export default function Home() {
 
   const saveCustomer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const normalizedPhone = normalizeSaudiPhone(customerForm.phone);
+    const rawPhone = customerForm.phone.trim();
+    const normalizedPhone = rawPhone ? normalizeSaudiPhone(customerForm.phone) : "";
 
-    if (!isValidSaudiPhone(normalizedPhone)) {
+    if (rawPhone && !isValidSaudiPhone(normalizedPhone)) {
       setCustomerPhoneError(true);
       return;
     }
@@ -3811,7 +3825,6 @@ export default function Home() {
         return;
       }
 
-      const invoiceValues = buildInvoiceValues(selectedJobCard, existingInvoice);
       const paidValidation = validatePaidAmount(
         invoiceForm.paidAmount,
         existingInvoice.grandTotal,
@@ -3831,16 +3844,7 @@ export default function Home() {
           invoice.id === editingInvoiceId
             ? {
                 ...invoice,
-                ...invoiceValues,
-                laborCost: existingInvoice.laborCost,
-                partsCost: existingInvoice.partsCost,
-                parts: existingInvoice.parts,
-                subtotal: existingInvoice.subtotal,
                 paidAmount: roundedPaidAmount,
-                discount: existingInvoice.discount,
-                taxPercentage: existingInvoice.taxPercentage,
-                taxAmount: existingInvoice.taxAmount,
-                grandTotal: existingInvoice.grandTotal,
                 remainingBalance: roundMoney(
                   Math.max(0, existingInvoice.grandTotal - roundedPaidAmount),
                 ),
@@ -3848,6 +3852,7 @@ export default function Home() {
                   roundedPaidAmount,
                   existingInvoice.grandTotal,
                 ),
+                notes: invoiceForm.notes.trim(),
               }
             : invoice,
         ),
@@ -4271,15 +4276,12 @@ export default function Home() {
       return;
     }
 
-    const backupJson = workshopDataService.exportAppData(appData);
-    const backupBlob = new Blob([backupJson], { type: "application/json" });
-    const backupUrl = window.URL.createObjectURL(backupBlob);
-    const backupLink = document.createElement("a");
-    backupLink.href = backupUrl;
-    backupLink.download = `car-dc9-backup-${getTodayInputValue()}.json`;
-    backupLink.click();
-    window.URL.revokeObjectURL(backupUrl);
-    showToast("toast.backupDownloaded");
+    const didDownload = workshopDataService.downloadTextFile(
+      workshopDataService.serializeBackup(appData),
+      workshopDataService.getBackupFilename(),
+    );
+
+    showToast(didDownload ? "toast.backupDownloaded" : "toast.storageSaveFailed");
   };
 
   const importBackup = (event: ChangeEvent<HTMLInputElement>) => {
@@ -4287,6 +4289,14 @@ export default function Home() {
     event.target.value = "";
 
     if (!backupFile) {
+      return;
+    }
+
+    if (
+      backupFile.type !== "application/json" &&
+      !backupFile.name.toLowerCase().endsWith(".json")
+    ) {
+      showToast("toast.backupInvalid");
       return;
     }
 
@@ -4300,9 +4310,18 @@ export default function Home() {
     const reader = new FileReader();
 
     reader.onload = () => {
+      const parsedBackup = workshopDataService.parseBackup<Partial<DemoPersistedData>>(
+        String(reader.result),
+        backupDataKeys,
+      );
+
+      if (!parsedBackup.ok) {
+        showToast("toast.backupInvalid");
+        return;
+      }
+
       try {
-        const parsedBackup = JSON.parse(String(reader.result)) as Partial<DemoPersistedData>;
-        const nextAppData = normalizePersistedAppData(parsedBackup);
+        const nextAppData = normalizePersistedAppData(parsedBackup.data);
         const saveResult = saveAppData(nextAppData);
 
         if (!saveResult.ok) {
@@ -4314,6 +4333,10 @@ export default function Home() {
           return;
         }
 
+        workshopDataService.downloadTextFile(
+          workshopDataService.serializeBackup(appData),
+          workshopDataService.getBackupFilename(),
+        );
         setAppData(nextAppData);
         setSettingsDraft(nextAppData.settings);
         setLocale(nextAppData.settings.defaultLanguage);
@@ -5348,10 +5371,14 @@ function CustomerModal({
             <PhoneField
               error={showPhoneError ? t("customers.form.phoneInvalid") : undefined}
               label={t("customers.fields.phone")}
-              value={formatSaudiPhone(customerForm.phone)}
-              onChange={(value) => onUpdateForm({ ...customerForm, phone: normalizeSaudiPhone(value) })}
+              value={customerForm.phone ? formatSaudiPhone(customerForm.phone) : ""}
+              onChange={(value) =>
+                onUpdateForm({
+                  ...customerForm,
+                  phone: value.trim() ? normalizeSaudiPhone(value) : "",
+                })
+              }
               placeholder={t("customers.form.phonePlaceholder")}
-              required
             />
             <FormField
               label={t("customers.fields.city")}
@@ -8110,8 +8137,8 @@ function SettingsSection({
       <section className="mb-6 rounded-lg border border-sky-200 bg-sky-50 p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm font-semibold text-sky-900">{t("settings.demoNotice.title")}</p>
-            <p className="mt-1 text-sm leading-6 text-sky-700">{t("settings.demoNotice.body")}</p>
+            <p className="text-sm font-semibold text-sky-900">{t("settings.backup.title")}</p>
+            <p className="mt-1 text-sm leading-6 text-sky-700">{t("settings.backup.body")}</p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <button
@@ -8119,12 +8146,13 @@ function SettingsSection({
               onClick={onDownloadBackup}
               className="h-10 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
             >
-              {t("settings.backup.download")}
+              {t("settings.backup.export")}
             </button>
             <label className="flex h-10 cursor-pointer items-center justify-center rounded-md border border-amber-200 bg-white px-3 text-sm font-semibold text-amber-700 transition hover:bg-amber-50">
               {t("settings.backup.import")}
               <input
                 type="file"
+                aria-label={t("settings.backup.chooseFile")}
                 accept="application/json,.json"
                 onChange={onImportBackup}
                 className="sr-only"

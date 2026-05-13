@@ -58,7 +58,7 @@
     "storageQuotaExceeded": "Browser storage is full. Export a backup and reduce old demo data.",
     "backupDownloaded": "Backup downloaded.",
     "backupRestored": "Backup restored successfully.",
-    "backupInvalid": "Backup file could not be restored.",
+    "backupInvalid": "Invalid backup file. Current data was not changed.",
     "recordPermanentlyDeleted": "Record permanently deleted."
   },
   "nav": {
@@ -508,8 +508,8 @@
     "savedMessage": "Settings saved for this session.",
     "resetMessage": "Settings reset to defaults.",
     "demoNotice": {
-      "title": "Demo mode: data is saved in this browser only. Final offline version will save permanently on the computer.",
-      "body": "Customers, jobs, invoices, reports, and settings persist after refresh on this device for testing."
+      "title": "Testing version only. Final version will be an offline desktop app.",
+      "body": "Data is saved in this browser for review and testing until the desktop version is ready."
     },
     "demoReset": {
       "button": "Reset demo data",
@@ -517,10 +517,14 @@
       "success": "Demo data reset to default records."
     },
     "backup": {
+      "title": "Data Backup",
+      "body": "Export or restore the current localStorage demo data for this browser.",
       "download": "Download Backup",
-      "import": "Import JSON Backup",
-      "warning": "Importing a backup overwrites the current browser data. Download a backup first if you need the current records.",
-      "restoreConfirm": "Restore this backup and overwrite the current browser data?"
+      "export": "Export Backup",
+      "import": "Import Backup",
+      "chooseFile": "Choose backup file",
+      "warning": "Restore backup warning: this will replace current local data. Export a backup first before restoring.",
+      "restoreConfirm": "This will replace current local data. Export a backup first before restoring. Continue?"
     },
     "actions": {
       "save": "Save Settings",
