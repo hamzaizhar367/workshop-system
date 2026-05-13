@@ -1068,6 +1068,21 @@ const backupDataKeys = [
   "settings",
 ];
 
+const backupArrayDataKeys = backupDataKeys.filter((key) => key !== "settings");
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const isValidBackupDataShape = (
+  value: unknown,
+): value is Partial<DemoPersistedData> => {
+  if (!isObjectRecord(value) || !isObjectRecord(value.settings)) {
+    return false;
+  }
+
+  return backupArrayDataKeys.every((key) => Array.isArray(value[key]));
+};
+
 const isSectionKey = (value: string): value is SectionKey =>
   navigationItems.some((item) => item.key === value);
 
@@ -2929,8 +2944,12 @@ export default function Home() {
   const setJobCardArchived = (jobCardId: number, archived: boolean) => {
     const targetJobCard = jobCards.find((jobCard) => jobCard.id === jobCardId);
     const activeJob = targetJobCard ? getActiveJob(targetJobCard.vehicleId) : undefined;
+    const wouldRestoreActiveJob =
+      !archived &&
+      targetJobCard !== undefined &&
+      activeJobStatuses.includes(targetJobCard.status);
 
-    if (!archived && activeJob && activeJob.id !== jobCardId) {
+    if (wouldRestoreActiveJob && activeJob && activeJob.id !== jobCardId) {
       showToast("toast.activeJobExists");
       return;
     }
@@ -3618,7 +3637,8 @@ export default function Home() {
     const vehicleLabel = vehicle
       ? `${vehicle.make} ${vehicle.model}`.trim()
       : invoiceForm.vehicleId === "__new"
-        ? `${invoiceForm.vehicleMake.trim()} ${invoiceForm.vehicleModel.trim()}`.trim()
+        ? `${invoiceForm.vehicleMake.trim()} ${invoiceForm.vehicleModel.trim()}`.trim() ||
+          t("common.unknown")
         : "";
     const plateNumber = vehicle
       ? vehicle.plateNumber
@@ -3927,11 +3947,7 @@ export default function Home() {
           : undefined;
 
       if (invoiceForm.vehicleId === "__new") {
-        if (
-          !invoiceForm.vehiclePlateNumber.trim() ||
-          !invoiceForm.vehicleMake.trim() ||
-          !invoiceForm.vehicleModel.trim()
-        ) {
+        if (!invoiceForm.vehiclePlateNumber.trim()) {
           logInvoiceSaveFailure("toast.invoiceVehicleRequired");
           return;
         }
@@ -3941,7 +3957,7 @@ export default function Home() {
           customerId: invoiceCustomer.id,
           ownerName: invoiceCustomer.name,
           plateNumber: invoiceForm.vehiclePlateNumber.trim(),
-          make: invoiceForm.vehicleMake.trim(),
+          make: invoiceForm.vehicleMake.trim() || t("common.unknown"),
           model: invoiceForm.vehicleModel.trim(),
           year: invoiceForm.vehicleYear.trim(),
           colorKey: invoiceForm.vehicleColor.trim(),
@@ -4316,6 +4332,11 @@ export default function Home() {
       );
 
       if (!parsedBackup.ok) {
+        showToast("toast.backupInvalid");
+        return;
+      }
+
+      if (!isValidBackupDataShape(parsedBackup.data)) {
         showToast("toast.backupInvalid");
         return;
       }
@@ -7713,7 +7734,6 @@ function InvoiceModal({
                         value={invoiceForm.vehicleMake}
                         onChange={(value) => onUpdateForm({ ...invoiceForm, vehicleMake: value })}
                         placeholder={t("vehicles.form.makePlaceholder")}
-                        required
                         disabled={isEditing}
                       />
                       <FormField
@@ -7721,7 +7741,6 @@ function InvoiceModal({
                         value={invoiceForm.vehicleModel}
                         onChange={(value) => onUpdateForm({ ...invoiceForm, vehicleModel: value })}
                         placeholder={t("vehicles.form.modelPlaceholder")}
-                        required
                         disabled={isEditing}
                       />
                       <FormField

@@ -24,7 +24,8 @@
     "next": "Next",
     "pageSummary": "Page {page} of {pages}",
     "paginationSummary": "Showing {shown} of {total}",
-    "notAvailable": "N/A"
+    "notAvailable": "N/A",
+    "unknown": "Unknown"
   },
   "toast": {
     "recordArchived": "Record archived",
@@ -45,7 +46,7 @@
     "invoiceCustomerRequired": "Select or enter a customer before saving the invoice.",
     "invoiceServiceRequired": "Enter the service/work performed before saving the invoice.",
     "invoiceAmountRequired": "Enter at least one invoice amount before saving.",
-    "invoiceVehicleRequired": "Enter plate, make, and model for the new vehicle.",
+    "invoiceVehicleRequired": "Enter the plate number for the new vehicle.",
     "invoiceJobCardRequired": "Select a completed job card before saving this invoice.",
     "invoiceDatesRequired": "Enter invoice date and due date before saving.",
     "invoiceSaved": "Invoice saved successfully.",
