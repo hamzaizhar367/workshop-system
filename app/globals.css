@@ -90,7 +90,7 @@ body {
     line-height: 1.42;
     break-inside: avoid;
     page-break-inside: avoid;
-    color: #000000 !important;
+    color: #111827 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -102,24 +102,27 @@ body {
   .invoice-sheet dd,
   .invoice-sheet th,
   .invoice-sheet td {
-    color: #000000 !important;
+    color: #111827 !important;
   }
 
   .invoice-sheet .text-slate-400,
   .invoice-sheet .text-slate-500,
-  .invoice-sheet .text-slate-600,
+  .invoice-sheet .text-slate-600 {
+    color: #374151 !important;
+  }
+
   .invoice-sheet .text-slate-700,
   .invoice-sheet .text-slate-800,
   .invoice-sheet .text-slate-900,
   .invoice-sheet .text-slate-950 {
-    color: #000000 !important;
+    color: #111827 !important;
   }
 
   .invoice-sheet .border,
   .invoice-sheet .border-slate-100,
   .invoice-sheet .border-slate-200,
   .invoice-sheet .divide-y > :not([hidden]) ~ :not([hidden]) {
-    border-color: #737373 !important;
+    border-color: #cbd5e1 !important;
   }
 
   .invoice-header {
@@ -145,14 +148,14 @@ body {
   }
 
   .invoice-header-rule {
-    height: 1.5px !important;
-    background: #0f172a !important;
+    height: 1px !important;
+    background: #64748b !important;
     margin-bottom: 0 !important;
   }
 
   .invoice-header h2 {
     font-size: 26px !important;
-    font-weight: 900 !important;
+    font-weight: 800 !important;
     line-height: 1 !important;
     letter-spacing: -0.02em !important;
   }
@@ -166,7 +169,7 @@ body {
 
   .invoice-number-card h3 {
     font-size: 26px !important;
-    font-weight: 900 !important;
+    font-weight: 800 !important;
     line-height: 1 !important;
     letter-spacing: -0.02em !important;
     overflow-wrap: anywhere !important;
@@ -188,7 +191,7 @@ body {
 
   .invoice-detail-card h4 {
     font-size: 8px !important;
-    font-weight: 800 !important;
+    font-weight: 700 !important;
     letter-spacing: 0.18em !important;
     padding-bottom: 0 !important;
     margin-bottom: 6px !important;
@@ -203,14 +206,14 @@ body {
 
   .invoice-detail-card dt {
     font-size: 8px !important;
-    font-weight: 800 !important;
+    font-weight: 700 !important;
     letter-spacing: 0.18em !important;
     line-height: 1.2 !important;
   }
 
   .invoice-detail-card dd {
     font-size: 11.5px !important;
-    font-weight: 700 !important;
+    font-weight: 500 !important;
     line-height: 1.3 !important;
     margin-top: 2px !important;
     overflow-wrap: anywhere !important;
@@ -230,14 +233,14 @@ body {
 
   .invoice-work h4 {
     font-size: 8px !important;
-    font-weight: 800 !important;
+    font-weight: 700 !important;
     letter-spacing: 0.18em !important;
     margin-bottom: 5px !important;
   }
 
   .invoice-work p {
     font-size: 11.5px !important;
-    font-weight: 600 !important;
+    font-weight: 400 !important;
     line-height: 1.45 !important;
     margin-top: 5px !important;
     padding-top: 5px !important;
@@ -259,7 +262,7 @@ body {
 
   .invoice-parts th {
     font-size: 8px !important;
-    font-weight: 800 !important;
+    font-weight: 700 !important;
     letter-spacing: 0.18em !important;
     padding: 7px 10px !important;
     line-height: 1.2 !important;
@@ -269,7 +272,7 @@ body {
     padding: 8px 10px !important;
     line-height: 1.4 !important;
     font-size: 12px !important;
-    font-weight: 600 !important;
+    font-weight: 400 !important;
     overflow-wrap: anywhere !important;
     word-break: break-word !important;
   }
@@ -277,6 +280,15 @@ body {
   .invoice-parts tr {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  .invoice-parts .bg-slate-900 {
+    background: #f1f5f9 !important;
+    border-bottom: 1px solid #cbd5e1 !important;
+  }
+
+  .invoice-parts .bg-slate-900 th {
+    color: #111827 !important;
   }
 
   .invoice-totals {
@@ -300,8 +312,8 @@ body {
 
   .invoice-total-card span,
   .invoice-total-card p {
-    color: #000000 !important;
-    font-weight: 700 !important;
+    color: #111827 !important;
+    font-weight: 500 !important;
   }
 
   .invoice-total-card > .divide-y {
@@ -325,24 +337,25 @@ body {
 
   .invoice-total-card .bg-slate-900 {
     padding: 13px !important;
-    background: #000000 !important;
-    color: #ffffff !important;
+    background: #f8fafc !important;
+    border-top: 1px solid #cbd5e1 !important;
+    color: #111827 !important;
   }
 
   .invoice-total-card .bg-slate-900 span,
   .invoice-total-card .bg-slate-900 p {
-    color: #ffffff !important;
+    color: #111827 !important;
   }
 
   .invoice-total-card .text-2xl {
     font-size: 23px !important;
-    font-weight: 900 !important;
+    font-weight: 800 !important;
     letter-spacing: -0.02em !important;
   }
 
   .invoice-total-card .text-base {
     font-size: 13px !important;
-    font-weight: 800 !important;
+    font-weight: 700 !important;
   }
 
   .invoice-support {
@@ -364,12 +377,12 @@ body {
 
   .invoice-warranty h4 {
     font-size: 8px !important;
-    font-weight: 800 !important;
+    font-weight: 700 !important;
   }
 
   .invoice-warranty p {
     font-size: 11px !important;
-    font-weight: 600 !important;
+    font-weight: 400 !important;
     line-height: 1.38 !important;
     margin-top: 6px !important;
     padding-top: 6px !important;
@@ -397,7 +410,7 @@ body {
 
   .invoice-signatures p {
     font-size: 8px !important;
-    font-weight: 800 !important;
+    font-weight: 700 !important;
     margin-top: 6px !important;
   }
 
@@ -410,12 +423,12 @@ body {
 
   .invoice-footer p:first-child {
     font-size: 12px !important;
-    font-weight: 900 !important;
+    font-weight: 800 !important;
   }
 
   .invoice-footer p:last-child {
     font-size: 10px !important;
-    font-weight: 700 !important;
+    font-weight: 500 !important;
     margin-top: 2px !important;
   }
 }

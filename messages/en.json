@@ -14,7 +14,7 @@
   },
   "common": {
     "active": "Active",
-    "viewEdit": "View/Edit",
+    "viewEdit": "Details",
     "archive": "Archive",
     "restore": "Restore",
     "remove": "Remove",
@@ -41,7 +41,7 @@
     "duplicateActiveInvoice": "This job card already has an active invoice.",
     "invoicedJobCardLocked": "This job card has an active invoice. Financial fields are locked.",
     "invoiceTotalsLocked": "Invoice totals are locked after creation. You can still update payment and notes.",
-    "correctionReasonRequired": "Enter a correction reason before revising the invoice.",
+    "correctionReasonRequired": "Enter a correction reason before correcting the invoice.",
     "correctedInvoiceRequiresCompletedJob": "Complete the corrected job card before creating the replacement invoice.",
     "invoiceCustomerRequired": "Select or enter a customer before saving the invoice.",
     "invoiceServiceRequired": "Enter the service/work performed before saving the invoice.",
@@ -55,8 +55,8 @@
     "negativeValuesNotAllowed": "Negative values are not allowed.",
     "duplicateCustomerFound": "A matching customer already exists. Select the existing customer before saving.",
     "phoneInvalid": "Enter a valid Saudi mobile number like +966 55 765 4321.",
-    "storageSaveFailed": "Could not save data to this browser. Export a backup before closing.",
-    "storageQuotaExceeded": "Browser storage is full. Export a backup and reduce old demo data.",
+    "storageSaveFailed": "Could not save changes. Export a backup before closing.",
+    "storageQuotaExceeded": "Storage is full. Export a backup and remove old test records.",
     "backupDownloaded": "Backup downloaded.",
     "backupRestored": "Backup restored successfully.",
     "backupInvalid": "Invalid backup file. Current data was not changed.",
@@ -90,7 +90,7 @@
   },
   "cards": {
     "activeJobs": "Active Jobs",
-    "todaysRevenue": "Today’s Revenue",
+    "todaysRevenue": "Today's Revenue",
     "todayExpenses": "Today Expenses",
     "todayProfit": "Today Profit",
     "pendingPayments": "Pending Payments",
@@ -128,9 +128,9 @@
     },
     "form": {
       "title": "Add Customer",
-      "subtitle": "Create a local customer record for testing.",
-      "editTitle": "View/Edit Customer",
-      "editSubtitle": "Review and update the local customer record.",
+      "subtitle": "Create a customer record.",
+      "editTitle": "Customer Details",
+      "editSubtitle": "Review and update the customer record.",
       "close": "Close",
       "namePlaceholder": "Enter customer name",
       "phonePlaceholder": "Enter phone number",
@@ -207,9 +207,9 @@
     },
     "form": {
       "title": "Add Vehicle",
-      "subtitle": "Create a local vehicle record for testing.",
-      "editTitle": "View/Edit Vehicle",
-      "editSubtitle": "Review and update the local vehicle record.",
+      "subtitle": "Create a vehicle record.",
+      "editTitle": "Vehicle Details",
+      "editSubtitle": "Review and update the vehicle record.",
       "close": "Close",
       "ownerPlaceholder": "Enter owner/customer name",
       "platePlaceholder": "Enter plate number",
@@ -266,9 +266,9 @@
     },
     "form": {
       "title": "Add Inventory Item",
-      "subtitle": "Create a local stock item for testing.",
-      "editTitle": "View/Edit Inventory Item",
-      "editSubtitle": "Review and update the local stock item.",
+      "subtitle": "Create a stock item.",
+      "editTitle": "Inventory Item Details",
+      "editSubtitle": "Review and update the stock item.",
       "close": "Close",
       "itemNamePlaceholder": "Enter item name",
       "arabicItemNamePlaceholder": "Enter Arabic item name",
@@ -498,7 +498,7 @@
       "confirmLabel": "Type DELETE to confirm",
       "ownerCodeLabel": "Owner Delete Code",
       "ownerCodePlaceholder": "Enter owner delete code",
-      "ownerCodeHelper": "For demo/offline mode only. Production must verify this code securely.",
+      "ownerCodeHelper": "Owner approval is required before permanent deletion.",
       "confirmButton": "Delete Permanently"
     }
   },
@@ -507,20 +507,20 @@
     "subtitle": "Configure workshop profile, invoice defaults, and display preferences",
     "kicker": "Workshop configuration",
     "savedMessage": "Settings saved for this session.",
-    "defaultCitySaved": "Default customer city saved.",
+    "defaultCustomerCitySaved": "Default customer city saved.",
     "resetMessage": "Settings reset to defaults.",
     "demoNotice": {
       "title": "Testing version only. Final version will be an offline desktop app.",
-      "body": "Data is saved in this browser for review and testing until the desktop version is ready."
+      "body": "Use this version for review only. Final records will be saved in the offline desktop app."
     },
     "demoReset": {
-      "button": "Reset demo data",
-      "confirm": "Reset all demo data in this browser and restore the default CAR DC9 records?",
-      "success": "Demo data reset to default records."
+      "button": "Reset test records",
+      "confirm": "Reset all test records and restore the default CAR DC9 records?",
+      "success": "Test records reset to default records."
     },
     "backup": {
       "title": "Data Backup",
-      "body": "Export or restore the current localStorage demo data for this browser.",
+      "body": "Export or restore the current workshop records for this testing version.",
       "download": "Download Backup",
       "export": "Export Backup",
       "import": "Import Backup",
@@ -550,7 +550,7 @@
     },
     "notes": {
       "title": "System Notes",
-      "subtitle": "Internal reminders for this demo session"
+      "subtitle": "Internal reminders for this testing version"
     },
     "fields": {
       "workshopName": "Workshop name",
@@ -569,7 +569,7 @@
       "showQrPlaceholder": "Show QR/barcode placeholder",
       "defaultPaymentMethod": "Default payment method",
       "defaultPaymentStatus": "Default payment status",
-      "defaultCity": "Default Customer City",
+      "defaultCustomerCity": "Default Customer City",
       "lowStockAlertEnabled": "Low stock alert enabled",
       "archiveConfirmationEnabled": "Archive confirmation enabled",
       "defaultLanguage": "Default language",
@@ -589,13 +589,13 @@
       "invoicePrefix": "INV",
       "jobCardPrefix": "JC",
       "purchaseOrderPrefix": "PO",
-      "defaultVatPercentage": "0",
+      "defaultVatPercentage": "Enter 15 for 15%",
       "defaultCurrency": "SAR",
-      "defaultCity": "Enter default customer city",
+      "defaultCustomerCity": "Enter default customer city",
       "systemNotes": "Add optional internal notes"
     },
     "helpers": {
-      "defaultCity": "Used when creating new customers"
+      "defaultCustomerCity": "Used when creating new customers"
     },
     "direction": {
       "ltr": "LTR",
@@ -608,7 +608,7 @@
     "addButton": "Create Invoice",
     "printButton": "Print/View Invoice",
     "printNow": "Print",
-    "correctButton": "Revise Invoice",
+    "correctButton": "Correct Invoice",
     "correctedLabel": "Corrected invoice",
     "searchLabel": "Search invoices",
     "searchPlaceholder": "Search by invoice, customer, phone, vehicle, plate, or job card",
@@ -624,6 +624,7 @@
       "dueDate": "Due date",
       "customerName": "Customer name",
       "customerPhone": "Customer phone",
+      "customerCity": "Customer city",
       "vehicle": "Vehicle",
       "plateNumber": "Plate number",
       "jobCardNumber": "Job card number",
@@ -643,7 +644,7 @@
     },
     "form": {
       "title": "Create Invoice",
-      "editTitle": "View/Edit Invoice",
+      "editTitle": "Invoice Details",
       "subtitle": "Pull service details from a completed job card or create a quick walk-in invoice.",
       "close": "Close",
       "invoiceType": "Invoice type",
@@ -676,14 +677,15 @@
       "invoiceDatePlaceholder": "Select invoice date",
       "dueDatePlaceholder": "Select due date",
       "discountPlaceholder": "Enter discount",
-      "taxPercentagePlaceholder": "Enter VAT/tax percentage",
+      "taxPercentagePlaceholder": "15",
+      "taxPercentageHelper": "Enter 15 for 15%. Entering 0.15 means 0.15%.",
       "paidPlaceholder": "Enter paid amount",
       "notesPlaceholder": "Add optional notes",
       "save": "Save Invoice",
       "cancel": "Cancel"
     },
     "correction": {
-      "title": "Revise Invoice",
+      "title": "Correct Invoice",
       "warning": "Invoice totals are locked for accounting integrity. Revising will archive this invoice for history, unlock the linked job card for correction, and then create a new corrected active invoice.",
       "reasonLabel": "Correction reason",
       "reasonPlaceholder": "Explain why this invoice is being corrected",
@@ -765,7 +767,7 @@
     "form": {
       "title": "Add Job Card",
       "subtitle": "Assign a job to a vehicle and update service history.",
-      "editTitle": "View/Edit Job Card",
+      "editTitle": "Job Card Details",
       "editSubtitle": "Review and update the workshop job record.",
       "close": "Close",
       "jobNumberPlaceholder": "Enter job number",

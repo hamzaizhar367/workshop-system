@@ -6,7 +6,9 @@ import {
   useState,
   useSyncExternalStore,
   type ChangeEvent,
+  type FocusEvent,
   type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
   type SetStateAction,
 } from "react";
@@ -98,6 +100,14 @@ const getPaymentStatusFromAmounts = (paidAmount: number, grandTotal: number) => 
 
   return paidAmount >= grandTotal ? ("paid" as const) : ("partial" as const);
 };
+
+const isInvoiceLinkedToCustomer = (invoice: Invoice, customer: Customer) =>
+  invoice.customerId === customer.id ||
+  (!invoice.customerId && invoice.customerName === customer.name);
+
+const isInvoiceLinkedToVehicle = (invoice: Invoice, vehicle: Vehicle) =>
+  invoice.vehicleId === vehicle.id ||
+  (!invoice.vehicleId && invoice.plateNumber === vehicle.plateNumber);
 
 type WorkshopSettings = {
   workshopName: string;
@@ -325,6 +335,7 @@ type Invoice = {
   vehicleId?: number;
   customerName: string;
   customerPhone: string;
+  customerCity?: string;
   vehicle: string;
   plateNumber: string;
   jobCardId: number;
@@ -376,6 +387,8 @@ type InvoiceForm = {
 };
 
 const activeJobStatuses: JobCardStatus[] = ["inWorkshop"];
+const isLiveJobCard = (jobCard: Pick<JobCard, "archived" | "status">) =>
+  !jobCard.archived && activeJobStatuses.includes(jobCard.status);
 
 const navigationItems: Array<{ key: SectionKey; translationKey: string }> = [
   { key: "dashboard", translationKey: "nav.dashboard" },
@@ -1830,6 +1843,7 @@ export default function Home() {
         invoice.invoiceNumber,
         invoice.customerName,
         invoice.customerPhone,
+        invoice.customerCity ?? "",
         formatSaudiPhone(invoice.customerPhone),
         invoice.vehicle,
         invoice.plateNumber,
@@ -2095,6 +2109,7 @@ export default function Home() {
           invoice.invoiceNumber,
           invoice.customerName,
           invoice.customerPhone,
+          invoice.customerCity ?? "",
           invoice.vehicle,
           invoice.plateNumber,
           invoice.jobCardNumber,
@@ -2176,6 +2191,22 @@ export default function Home() {
     }).format(value);
   }
 
+  function formatSummaryMoney(value: number) {
+    const currencyCode = /^[A-Z]{3}$/.test(settings.defaultCurrency)
+      ? settings.defaultCurrency
+      : "SAR";
+    const roundedValue = Number.isFinite(value)
+      ? Math.round((value + Number.EPSILON) * 100) / 100
+      : 0;
+    const hasDecimals = !Number.isInteger(roundedValue);
+    const formattedAmount = new Intl.NumberFormat(numberLocale, {
+      minimumFractionDigits: hasDecimals ? 2 : 0,
+      maximumFractionDigits: hasDecimals ? 2 : 0,
+    }).format(roundedValue);
+
+    return `${currencyCode} ${formattedAmount}`;
+  }
+
   function formatDate(value: string) {
     return new Intl.DateTimeFormat(numberLocale, {
       day: "numeric",
@@ -2185,7 +2216,7 @@ export default function Home() {
   }
 
   const formatCardValue = (value: number, currency?: boolean) => {
-    return currency ? formatMoney(value) : formatNumber(value);
+    return currency ? formatSummaryMoney(value) : formatNumber(value);
   };
 
   const parsePositiveNumber = (value: string) => {
@@ -2534,8 +2565,9 @@ export default function Home() {
       );
       setJobCards((currentJobCards) =>
         currentJobCards.map((jobCard) =>
-          jobCard.customerId === editingCustomerId ||
-          (existingCustomer && jobCard.customerName === existingCustomer.name)
+          isLiveJobCard(jobCard) &&
+          (jobCard.customerId === editingCustomerId ||
+            (existingCustomer && jobCard.customerName === existingCustomer.name))
             ? {
                 ...jobCard,
                 customerId: editingCustomerId,
@@ -2648,8 +2680,9 @@ export default function Home() {
       );
       setJobCards((currentJobCards) =>
         currentJobCards.map((jobCard) =>
-          jobCard.vehicleId === editingVehicleId ||
-          (existingVehicle && jobCard.plateNumber === existingVehicle.plateNumber)
+          isLiveJobCard(jobCard) &&
+          (jobCard.vehicleId === editingVehicleId ||
+            (existingVehicle && jobCard.plateNumber === existingVehicle.plateNumber))
             ? {
                 ...jobCard,
                 vehicleId: editingVehicleId,
@@ -2855,6 +2888,11 @@ export default function Home() {
 
     const paidAmount = paidValidation.value;
     const paymentStatus = getPaymentStatusFromAmounts(paidAmount, totalAmount);
+    const shouldPreserveHistoricalJobSnapshot =
+      existingJobCard !== undefined &&
+      !isLiveJobCard(existingJobCard) &&
+      existingJobCard.vehicleId === selectedVehicle.id &&
+      !activeJobStatuses.includes(jobCardForm.status);
     const isSavingCompletedJob = jobCardForm.status === "completed";
     const previousDeductedParts =
       existingJobCard?.stockDeducted === true ? existingJobCard.deductedParts : [];
@@ -2878,12 +2916,20 @@ export default function Home() {
     const jobCardValues = {
       jobNumber: jobCardForm.jobNumber.trim(),
       vehicleId: selectedVehicle.id,
-      customerId: selectedVehicle.customerId,
+      customerId: shouldPreserveHistoricalJobSnapshot
+        ? existingJobCard.customerId
+        : selectedVehicle.customerId,
       date: jobCardForm.date,
       status: jobCardForm.status,
-      customerName: selectedCustomer?.name ?? selectedVehicle.ownerName,
-      vehicleLabel: `${selectedVehicle.make} ${selectedVehicle.model}`,
-      plateNumber: selectedVehicle.plateNumber,
+      customerName: shouldPreserveHistoricalJobSnapshot
+        ? existingJobCard.customerName
+        : selectedCustomer?.name ?? selectedVehicle.ownerName,
+      vehicleLabel: shouldPreserveHistoricalJobSnapshot
+        ? existingJobCard.vehicleLabel
+        : `${selectedVehicle.make} ${selectedVehicle.model}`,
+      plateNumber: shouldPreserveHistoricalJobSnapshot
+        ? existingJobCard.plateNumber
+        : selectedVehicle.plateNumber,
       complaint: jobCardForm.complaint.trim(),
       workPerformed: jobCardForm.workPerformed.trim(),
       mechanic: jobCardForm.mechanic.trim(),
@@ -3427,7 +3473,7 @@ export default function Home() {
         customerId: invoice.customerId ? String(invoice.customerId) : "",
         customerName: invoice.customerName,
         customerPhone: invoice.customerPhone,
-        customerCity: "",
+        customerCity: invoice.customerCity ?? "",
         vehicleId: invoice.vehicleId ? String(invoice.vehicleId) : "",
         vehiclePlateNumber: invoice.plateNumber,
         vehicleMake: invoice.vehicle,
@@ -3579,6 +3625,7 @@ export default function Home() {
       vehicleId: jobCard.vehicleId,
       customerName: jobCard.customerName,
       customerPhone: customer?.phone ?? "",
+      customerCity: customer?.city ?? "",
       vehicle: jobCard.vehicleLabel,
       plateNumber: jobCard.plateNumber,
       jobCardId: jobCard.id,
@@ -3660,6 +3707,7 @@ export default function Home() {
       vehicleId: vehicle?.id,
       customerName: customer.name,
       customerPhone: customer.phone,
+      customerCity: customer.city,
       vehicle: vehicleLabel || t("common.notAvailable"),
       plateNumber: plateNumber || t("common.notAvailable"),
       jobCardId: 0,
@@ -4125,7 +4173,7 @@ export default function Home() {
         (jobCard) => jobCard.customerId === record.id,
       );
       const hasLinkedInvoices = customer
-        ? invoices.some((invoice) => invoice.customerName === customer.name)
+        ? invoices.some((invoice) => isInvoiceLinkedToCustomer(invoice, customer))
         : false;
 
       return hasLinkedVehicles || hasLinkedJobCards || hasLinkedInvoices
@@ -4139,7 +4187,7 @@ export default function Home() {
         (jobCard) => jobCard.vehicleId === record.id,
       );
       const hasLinkedInvoices = vehicle
-        ? invoices.some((invoice) => invoice.plateNumber === vehicle.plateNumber)
+        ? invoices.some((invoice) => isInvoiceLinkedToVehicle(invoice, vehicle))
         : false;
 
       return hasLinkedJobCards || hasLinkedInvoices
@@ -4711,6 +4759,7 @@ export default function Home() {
                 expenseCount={activeExpenses.length}
                 formatDate={formatDate}
                 formatMoney={formatMoney}
+                formatSummaryMoney={formatSummaryMoney}
                 isModalOpen={isExpenseModalOpen}
                 largestExpense={largestExpenseAmount}
                 monthlyExpenseTotal={monthlyExpenseTotal}
@@ -4761,6 +4810,7 @@ export default function Home() {
                 filterRange={reportRange}
                 formatDate={formatDate}
                 formatMoney={formatMoney}
+                formatSummaryMoney={formatSummaryMoney}
                 formatNumber={formatNumber}
                 lowStockItems={reportLowStockItems}
                 onFilterChange={setReportRange}
@@ -5195,8 +5245,7 @@ function CustomersSection({
             const customerInvoices = invoices.filter(
               (invoice) =>
                 !invoice.archived &&
-                (invoice.customerId === customer.id ||
-                  (!invoice.customerId && invoice.customerName === customer.name)),
+                isInvoiceLinkedToCustomer(invoice, customer),
             );
             const lastCustomerJob = customerJobs.toSorted((firstJob, secondJob) =>
               secondJob.date.localeCompare(firstJob.date),
@@ -7087,6 +7136,9 @@ function InvoicesSection({
                 <CustomerField label={t("invoices.fields.paidAmount")} value={formatMoney(invoice.paidAmount)} />
                 <CustomerField label={t("invoices.fields.remainingBalance")} value={formatMoney(invoice.remainingBalance)} />
                 <CustomerField label={t("invoices.fields.customerPhone")} value={formatPhone(invoice.customerPhone)} />
+                {invoice.customerCity ? (
+                  <CustomerField label={t("invoices.fields.customerCity")} value={invoice.customerCity} />
+                ) : null}
               </dl>
               <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
                 <button type="button" onClick={() => onOpenModal(invoice)} className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
@@ -7321,11 +7373,11 @@ function InvoiceModal({
     manualPartsCostValue !== null && manualPartsCostValue > 0 ? manualPartsCostValue : 0;
   const laborCost = selectedJobCard ? selectedJobCard.laborCost : manualLaborCost;
   const partsCost = selectedJobCard ? selectedJobCard.partsCost : manualPartsCost;
-  const subtotal = laborCost + partsCost;
-  const taxAmount = subtotal * (taxPercentage / 100);
-  const grandTotal = Math.max(0, subtotal + taxAmount - discount);
-  const remainingBalance = Math.max(0, grandTotal - paidAmount);
-  const paymentStatus = paidAmount <= 0 ? "unpaid" : paidAmount >= grandTotal ? "paid" : "partial";
+  const subtotal = roundMoney(laborCost + partsCost);
+  const taxAmount = roundMoney(subtotal * (taxPercentage / 100));
+  const grandTotal = roundMoney(Math.max(0, subtotal + taxAmount - discount));
+  const remainingBalance = roundMoney(Math.max(0, grandTotal - paidAmount));
+  const paymentStatus = getPaymentStatusFromAmounts(paidAmount, grandTotal);
   const discountErrorKey = getInvoiceMoneyInputErrorKey(invoiceForm.discount);
   const taxPercentageErrorKey = getInvoiceMoneyInputErrorKey(
     invoiceForm.taxPercentage,
@@ -8002,6 +8054,9 @@ function PrintInvoiceModal({
                 <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3.5 border-t border-slate-100 pt-3">
                   <InvoicePrintField label={t("invoices.fields.customerName")} value={invoice.customerName} />
                   <InvoicePrintField label={t("invoices.fields.customerPhone")} value={formatPhone(invoice.customerPhone)} />
+                  {invoice.customerCity ? (
+                    <InvoicePrintField label={t("invoices.fields.customerCity")} value={invoice.customerCity} />
+                  ) : null}
                   <InvoicePrintField label={t("invoices.fields.paymentStatus")} value={t(`jobCards.paymentStatus.${invoice.paymentStatus}`)} />
                 </dl>
               </section>
@@ -8137,9 +8192,36 @@ function SettingsSection({
   const isCurrentPhoneValid = isValidSaudiPhone(settings.phoneNumber);
   const showPhoneError =
     (settingsPhoneError || hasPhoneValue) && !isCurrentPhoneValid;
+  const isCommitInput = (target: EventTarget | null): target is HTMLInputElement =>
+    target instanceof HTMLInputElement &&
+    ["text", "number", "tel"].includes(target.type);
+  const handleSettingsKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
+    if (event.key !== "Enter" || !isCommitInput(event.target)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.requestSubmit();
+  };
+  const handleSettingsBlur = (event: FocusEvent<HTMLFormElement>) => {
+    if (!isCommitInput(event.target)) {
+      return;
+    }
+
+    const nextFocusedElement = event.relatedTarget;
+    if (
+      nextFocusedElement instanceof Node &&
+      event.currentTarget.contains(nextFocusedElement)
+    ) {
+      return;
+    }
+
+    const form = event.currentTarget;
+    window.setTimeout(() => form.requestSubmit(), 0);
+  };
 
   return (
-    <form onSubmit={onSave}>
+    <form onSubmit={onSave} onBlur={handleSettingsBlur} onKeyDown={handleSettingsKeyDown}>
       <section className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-sm font-medium text-emerald-700">{t("settings.kicker")}</p>
@@ -8257,9 +8339,9 @@ function SettingsSection({
                 ))}
               </select>
             </label>
-            <div>
-              <FormField label={t("settings.fields.defaultCity")} value={settings.defaultCustomerCity} onChange={(value) => onUpdateSettings({ ...settings, defaultCustomerCity: value })} placeholder={t("settings.placeholders.defaultCity")} />
-              <p className="mt-1 text-xs text-slate-500">{t("settings.helpers.defaultCity")}</p>
+            <div className="sm:col-span-2">
+              <FormField label={t("settings.fields.defaultCustomerCity")} value={settings.defaultCustomerCity} onChange={(value) => onUpdateSettings({ ...settings, defaultCustomerCity: value })} placeholder={t("settings.placeholders.defaultCustomerCity")} />
+              <p className="mt-1 text-xs text-slate-500">{t("settings.helpers.defaultCustomerCity")}</p>
             </div>
           </div>
           <div className="mt-4 grid gap-3">
@@ -8600,6 +8682,7 @@ function ReportsSection({
   filterRange,
   formatDate,
   formatMoney,
+  formatSummaryMoney,
   formatNumber,
   lowStockItems,
   onFilterChange,
@@ -8621,6 +8704,7 @@ function ReportsSection({
   filterRange: ReportRange;
   formatDate: (value: string) => string;
   formatMoney: (value: number) => string;
+  formatSummaryMoney: (value: number) => string;
   formatNumber: (value: number) => string;
   lowStockItems: InventoryItem[];
   onFilterChange: (value: ReportRange) => void;
@@ -8636,14 +8720,14 @@ function ReportsSection({
   uninvoicedCompletedWorkValue: number;
 }) {
   const summaryCards = [
-    { key: "completedWorkValue", value: formatMoney(completedWorkValue), tone: "text-slate-950" },
-    { key: "uninvoicedCompletedWork", value: formatMoney(uninvoicedCompletedWorkValue), tone: "text-amber-700" },
-    { key: "totalRevenue", value: formatMoney(totalRevenue), tone: "text-emerald-700" },
-    { key: "paidRevenue", value: formatMoney(paidRevenue), tone: "text-emerald-700" },
-    { key: "outstandingBalance", value: formatMoney(outstandingBalance), tone: "text-amber-700" },
-    { key: "totalExpenses", value: formatMoney(totalExpenses), tone: "text-rose-700" },
-    { key: "purchaseCosts", value: formatMoney(purchaseCosts), tone: "text-slate-950" },
-    { key: "estimatedNetProfit", value: formatMoney(estimatedNetProfit), tone: estimatedNetProfit >= 0 ? "text-emerald-700" : "text-rose-700" },
+    { key: "completedWorkValue", value: formatSummaryMoney(completedWorkValue), tone: "text-slate-950" },
+    { key: "uninvoicedCompletedWork", value: formatSummaryMoney(uninvoicedCompletedWorkValue), tone: "text-amber-700" },
+    { key: "totalRevenue", value: formatSummaryMoney(totalRevenue), tone: "text-emerald-700" },
+    { key: "paidRevenue", value: formatSummaryMoney(paidRevenue), tone: "text-emerald-700" },
+    { key: "outstandingBalance", value: formatSummaryMoney(outstandingBalance), tone: "text-amber-700" },
+    { key: "totalExpenses", value: formatSummaryMoney(totalExpenses), tone: "text-rose-700" },
+    { key: "purchaseCosts", value: formatSummaryMoney(purchaseCosts), tone: "text-slate-950" },
+    { key: "estimatedNetProfit", value: formatSummaryMoney(estimatedNetProfit), tone: estimatedNetProfit >= 0 ? "text-emerald-700" : "text-rose-700" },
     { key: "completedJobs", value: formatNumber(completedJobs.length), tone: "text-slate-950" },
     { key: "lowStockItems", value: formatNumber(lowStockItems.length), tone: "text-rose-700" },
   ];
@@ -8716,7 +8800,7 @@ function ReportsSection({
                   {t(`expenses.category.${categoryTotal.category}`)}
                 </p>
                 <p className="mt-2 text-base font-black text-slate-950">
-                  {formatMoney(categoryTotal.total)}
+                  {formatSummaryMoney(categoryTotal.total)}
                 </p>
               </div>
             ))}
@@ -8732,7 +8816,7 @@ function ReportsSection({
               <p className="mt-1 text-sm text-slate-500">{t("reports.purchases.subtitle")}</p>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-              {formatMoney(purchaseCosts)}
+              {formatSummaryMoney(purchaseCosts)}
             </span>
           </div>
           <div className="mt-5 grid gap-3">
@@ -8877,6 +8961,7 @@ function ExpensesSection({
   expenses,
   formatDate,
   formatMoney,
+  formatSummaryMoney,
   isModalOpen,
   largestExpense,
   monthlyExpenseTotal,
@@ -8896,6 +8981,7 @@ function ExpensesSection({
   expenses: Expense[];
   formatDate: (value: string) => string;
   formatMoney: (value: number) => string;
+  formatSummaryMoney: (value: number) => string;
   isModalOpen: boolean;
   largestExpense: number;
   monthlyExpenseTotal: number;
@@ -8940,19 +9026,19 @@ function ExpensesSection({
         <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-medium text-slate-500">{t("expenses.totals.monthly")}</p>
           <p className="mt-2 text-2xl font-black tracking-normal text-slate-950">
-            {formatMoney(monthlyExpenseTotal)}
+            {formatSummaryMoney(monthlyExpenseTotal)}
           </p>
         </article>
         <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-medium text-slate-500">{t("expenses.totals.weekly")}</p>
           <p className="mt-2 text-2xl font-black tracking-normal text-slate-950">
-            {formatMoney(weeklyExpenseTotal)}
+            {formatSummaryMoney(weeklyExpenseTotal)}
           </p>
         </article>
         <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-medium text-slate-500">{t("expenses.totals.largest")}</p>
           <p className="mt-2 text-2xl font-black tracking-normal text-slate-950">
-            {formatMoney(largestExpense)}
+            {formatSummaryMoney(largestExpense)}
           </p>
         </article>
         <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -8983,7 +9069,7 @@ function ExpensesSection({
                 {t(`expenses.category.${categoryTotal.category}`)}
               </p>
               <p className="mt-2 text-base font-black text-slate-950">
-                {formatMoney(categoryTotal.total)}
+                {formatSummaryMoney(categoryTotal.total)}
               </p>
             </article>
           ))}
@@ -10336,14 +10422,16 @@ function PhoneField({
 function PercentField({
   disabled,
   error,
+  helperText,
   label,
   onChange,
   placeholder,
-  step = "0.01",
+  step = "1",
   value,
 }: {
   disabled?: boolean;
   error?: string;
+  helperText?: string;
   label: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -10368,12 +10456,14 @@ function PercentField({
           aria-invalid={Boolean(error)}
           className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
         />
-        <span className="flex w-12 shrink-0 items-center justify-center border-s border-slate-200 bg-slate-50 text-sm font-bold text-slate-600">
+        <span className="flex w-12 shrink-0 items-center justify-center border-s border-slate-200 bg-slate-50 text-sm font-bold text-slate-700">
           %
         </span>
       </div>
       {error ? (
         <p className="mt-1 text-xs font-medium text-rose-600">{error}</p>
+      ) : helperText ? (
+        <p className="mt-1 text-xs font-medium text-slate-500">{helperText}</p>
       ) : null}
     </label>
   );
