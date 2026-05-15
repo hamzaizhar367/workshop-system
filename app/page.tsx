@@ -7330,6 +7330,10 @@ function InvoiceModal({
   const selectedCustomer = customers.find(
     (customer) => customer.id === Number(invoiceForm.customerId),
   );
+  const displayedCustomerCity =
+    isEditing && invoiceForm.customerCity
+      ? invoiceForm.customerCity
+      : selectedCustomer?.city ?? "";
   const customerVehicles = selectedCustomer
     ? vehicles.filter(
         (vehicle) =>
@@ -7698,7 +7702,7 @@ function InvoiceModal({
                     <section className="grid gap-3 rounded-lg bg-slate-50 p-3 sm:col-span-2 sm:grid-cols-3">
                       <CustomerField label={t("invoices.fields.customerName")} value={selectedCustomer.name} />
                       <CustomerField label={t("invoices.fields.customerPhone")} value={formatPhone(selectedCustomer.phone)} />
-                      <CustomerField label={t("customers.fields.city")} value={selectedCustomer.city || t("common.notAvailable")} />
+                      <CustomerField label={t("invoices.fields.customerCity")} value={displayedCustomerCity || t("common.notAvailable")} />
                     </section>
                   ) : (
                     <>
@@ -8016,7 +8020,7 @@ function PrintInvoiceModal({
           <section
             className={
               isPrintRendering
-                ? "invoice-sheet mx-auto w-full bg-white"
+                ? "invoice-sheet mx-auto w-full max-w-[900px] bg-white p-10 sm:p-12"
                 : "invoice-sheet mx-auto w-full max-w-[900px] bg-white p-10 shadow-md ring-1 ring-slate-200 sm:p-12 print:min-h-0 print:max-w-none print:p-0 print:shadow-none print:ring-0"
             }
           >
@@ -8080,7 +8084,7 @@ function PrintInvoiceModal({
             <section className="invoice-parts mt-4 overflow-hidden rounded-sm border border-slate-200">
               <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr className="bg-slate-900 text-white">
+                  <tr className="border-b border-slate-200 bg-slate-100 text-slate-900">
                     <th className="w-[46%] px-5 py-3 text-start text-[9px] font-bold uppercase tracking-[0.18em]">{t("invoices.print.part")}</th>
                     <th className="w-[14%] px-4 py-3 text-center text-[9px] font-bold uppercase tracking-[0.18em]">{t("jobCards.parts.quantity")}</th>
                     <th className="w-[20%] px-4 py-3 text-center text-[9px] font-bold uppercase tracking-[0.18em]">{t("jobCards.parts.unitSellingPrice")}</th>
@@ -8111,11 +8115,6 @@ function PrintInvoiceModal({
 
             <div className="invoice-totals mt-4 grid gap-4 sm:grid-cols-[1fr_400px]">
               <div className="invoice-support grid content-start gap-3">
-                {settings.showQrPlaceholder ? (
-                  <div className="invoice-qr flex size-28 items-center justify-center rounded-sm border-2 border-dashed border-slate-300 bg-slate-50 p-3 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                    {t("invoices.print.qrPlaceholder")}
-                  </div>
-                ) : null}
                 <section className="invoice-warranty rounded-sm border border-slate-200 bg-slate-50 p-4">
                   <h4 className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{t("invoices.print.warrantyTitle")}</h4>
                   <p className="mt-2 border-t border-slate-200 pt-2 text-sm leading-relaxed text-slate-700">
@@ -8131,9 +8130,9 @@ function PrintInvoiceModal({
                   <div className="flex justify-between gap-4 py-2.5"><dt className="text-sm text-slate-600">{t("invoices.fields.taxPercentage")}</dt><dd className="text-sm font-semibold tabular-nums text-slate-800">{invoice.taxPercentage}%</dd></div>
                   <div className="flex justify-between gap-4 py-2.5"><dt className="text-sm text-slate-600">{t("invoices.fields.taxAmount")}</dt><dd className="text-sm font-semibold tabular-nums text-slate-800">{formatMoney(invoice.taxAmount)}</dd></div>
                 </div>
-                <div className="mx-0 mt-0 flex items-center justify-between gap-4 bg-slate-900 px-5 py-4">
-                  <dt className="text-sm font-bold uppercase tracking-widest text-slate-300">{t("invoices.fields.grandTotal")}</dt>
-                  <dd className="text-2xl font-black tabular-nums tracking-tight text-white">{formatMoney(invoice.grandTotal)}</dd>
+                <div className="mx-0 mt-0 flex items-center justify-between gap-4 border-y border-slate-200 bg-slate-100 px-5 py-4">
+                  <dt className="text-sm font-bold uppercase tracking-widest text-slate-600">{t("invoices.fields.grandTotal")}</dt>
+                  <dd className="text-2xl font-black tabular-nums tracking-tight text-slate-950">{formatMoney(invoice.grandTotal)}</dd>
                 </div>
                 <div className="divide-y divide-slate-100 px-5 pb-4">
                   <div className="flex justify-between gap-4 py-2.5"><dt className="text-sm text-slate-600">{t("invoices.fields.paidAmount")}</dt><dd className="text-sm font-semibold tabular-nums text-slate-800">{formatMoney(invoice.paidAmount)}</dd></div>
