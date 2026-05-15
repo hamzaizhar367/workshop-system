@@ -108,6 +108,7 @@ type WorkshopSettings = {
   country: string;
   address: string;
   logoInitials: string;
+  defaultCustomerCity: string;
   invoicePrefix: string;
   jobCardPrefix: string;
   purchaseOrderPrefix: string;
@@ -439,6 +440,7 @@ const defaultWorkshopSettings: WorkshopSettings = {
   country: "Saudi Arabia",
   address: "",
   logoInitials: "DC9",
+  defaultCustomerCity: "",
   invoicePrefix: "INV",
   jobCardPrefix: "JC",
   purchaseOrderPrefix: "PO",
@@ -2469,7 +2471,10 @@ export default function Home() {
       });
     } else {
       setEditingCustomerId(null);
-      setCustomerForm(emptyCustomerForm);
+      setCustomerForm({
+        ...emptyCustomerForm,
+        city: settings.defaultCustomerCity.trim() || emptyCustomerForm.city,
+      });
     }
 
     setCustomerPhoneError(false);
@@ -3445,6 +3450,7 @@ export default function Home() {
       setEditingInvoiceId(null);
       setInvoiceForm({
         ...emptyInvoiceForm,
+        customerCity: settings.defaultCustomerCity.trim() || emptyInvoiceForm.customerCity,
         invoiceDate: getTodayInputValue(),
         dueDate: getTodayInputValue(),
         taxPercentage: settings.defaultVatPercentage,
@@ -4241,6 +4247,7 @@ export default function Home() {
       arabicSubtitle:
         settingsDraft.arabicSubtitle.trim() || defaultWorkshopSettings.arabicSubtitle,
       phoneNumber: normalizedPhone,
+      defaultCustomerCity: settingsDraft.defaultCustomerCity.trim(),
       defaultVatPercentage: String(defaultVatValidation.value),
     };
 
@@ -4722,6 +4729,7 @@ export default function Home() {
                   activeTab={invoiceTab}
                   availableJobCards={getCompletedJobCardsForInvoice()}
                   customers={customers}
+                  defaultCustomerCity={settings.defaultCustomerCity}
                   formatDate={formatDate}
                   formatPhone={formatPhone}
                   formatMoney={formatMoney}
@@ -6962,6 +6970,7 @@ function InvoicesSection({
   activeTab,
   availableJobCards,
   customers,
+  defaultCustomerCity,
   formatDate,
   formatPhone,
   formatMoney,
@@ -6986,6 +6995,7 @@ function InvoicesSection({
   activeTab: RecordTab;
   availableJobCards: JobCard[];
   customers: Customer[];
+  defaultCustomerCity: string;
   formatDate: (value: string) => string;
   formatPhone: (value: string) => string;
   formatMoney: (value: number) => string;
@@ -7128,6 +7138,7 @@ function InvoicesSection({
         <InvoiceModal
           availableJobCards={availableJobCards}
           customers={customers}
+          defaultCustomerCity={defaultCustomerCity}
           formatDate={formatDate}
           formatPhone={formatPhone}
           formatMoney={formatMoney}
@@ -7228,6 +7239,7 @@ function InvoiceCorrectionModal({
 function InvoiceModal({
   availableJobCards,
   customers,
+  defaultCustomerCity,
   formatDate,
   formatPhone,
   formatMoney,
@@ -7242,6 +7254,7 @@ function InvoiceModal({
 }: {
   availableJobCards: JobCard[];
   customers: Customer[];
+  defaultCustomerCity: string;
   formatDate: (value: string) => string;
   formatPhone: (value: string) => string;
   formatMoney: (value: number) => string;
@@ -7488,6 +7501,10 @@ function InvoiceModal({
       ...invoiceForm,
       invoiceType,
       jobCardId: "",
+      customerCity:
+        invoiceType === "quick"
+          ? invoiceForm.customerCity || defaultCustomerCity.trim()
+          : invoiceForm.customerCity,
       workPerformed: invoiceType === "quick" ? "" : invoiceForm.workPerformed,
       laborCost: invoiceType === "quick" ? "" : invoiceForm.laborCost,
       partsCost: invoiceType === "quick" ? "" : invoiceForm.partsCost,
@@ -7503,7 +7520,7 @@ function InvoiceModal({
       customerId,
       customerName: nextCustomer?.name ?? "",
       customerPhone: nextCustomer?.phone ?? "",
-      customerCity: nextCustomer?.city ?? "",
+      customerCity: nextCustomer?.city ?? defaultCustomerCity.trim(),
       vehicleId: "",
     });
   };
@@ -8240,6 +8257,10 @@ function SettingsSection({
                 ))}
               </select>
             </label>
+            <div>
+              <FormField label={t("settings.fields.defaultCity")} value={settings.defaultCustomerCity} onChange={(value) => onUpdateSettings({ ...settings, defaultCustomerCity: value })} placeholder={t("settings.placeholders.defaultCity")} />
+              <p className="mt-1 text-xs text-slate-500">{t("settings.helpers.defaultCity")}</p>
+            </div>
           </div>
           <div className="mt-4 grid gap-3">
             <SettingsToggle checked={settings.lowStockAlertEnabled} label={t("settings.fields.lowStockAlertEnabled")} onChange={(value) => onUpdateSettings({ ...settings, lowStockAlertEnabled: value })} />

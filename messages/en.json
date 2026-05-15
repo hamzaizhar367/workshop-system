@@ -507,6 +507,7 @@
     "subtitle": "Configure workshop profile, invoice defaults, and display preferences",
     "kicker": "Workshop configuration",
     "savedMessage": "Settings saved for this session.",
+    "defaultCitySaved": "Default customer city saved.",
     "resetMessage": "Settings reset to defaults.",
     "demoNotice": {
       "title": "Testing version only. Final version will be an offline desktop app.",
@@ -568,6 +569,7 @@
       "showQrPlaceholder": "Show QR/barcode placeholder",
       "defaultPaymentMethod": "Default payment method",
       "defaultPaymentStatus": "Default payment status",
+      "defaultCity": "Default Customer City",
       "lowStockAlertEnabled": "Low stock alert enabled",
       "archiveConfirmationEnabled": "Archive confirmation enabled",
       "defaultLanguage": "Default language",
@@ -589,7 +591,11 @@
       "purchaseOrderPrefix": "PO",
       "defaultVatPercentage": "0",
       "defaultCurrency": "SAR",
+      "defaultCity": "Enter default customer city",
       "systemNotes": "Add optional internal notes"
+    },
+    "helpers": {
+      "defaultCity": "Used when creating new customers"
     },
     "direction": {
       "ltr": "LTR",

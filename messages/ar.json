@@ -462,6 +462,7 @@
     "subtitle": "ضبط ملف الورشة وإعدادات الفواتير وتفضيلات العرض",
     "kicker": "إعدادات الورشة",
     "savedMessage": "تم حفظ الإعدادات لهذه الجلسة.",
+    "defaultCitySaved": "تم حفظ مدينة العميل الافتراضية.",
     "resetMessage": "تمت إعادة الإعدادات إلى القيم الافتراضية.",
     "demoNotice": {
       "title": "نسخة اختبار فقط. النسخة النهائية ستكون تطبيق سطح مكتب يعمل بدون إنترنت.",
@@ -513,6 +514,7 @@
       "showQrPlaceholder": "إظهار مكان QR/الباركود",
       "defaultPaymentMethod": "طريقة الدفع الافتراضية",
       "defaultPaymentStatus": "حالة الدفع الافتراضية",
+      "defaultCity": "مدينة العميل الافتراضية",
       "lowStockAlertEnabled": "تفعيل تنبيه المخزون المنخفض",
       "archiveConfirmationEnabled": "تفعيل تأكيد الأرشفة",
       "defaultLanguage": "اللغة الافتراضية",
@@ -534,7 +536,11 @@
       "purchaseOrderPrefix": "PO",
       "defaultVatPercentage": "0",
       "defaultCurrency": "SAR",
+      "defaultCity": "أدخل مدينة العميل الافتراضية",
       "systemNotes": "أضف ملاحظات داخلية اختيارية"
+    },
+    "helpers": {
+      "defaultCity": "تُستخدم عند إنشاء عملاء جدد"
     },
     "direction": {
       "ltr": "LTR",
